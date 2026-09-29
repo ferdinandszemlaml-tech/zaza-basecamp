@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Přihlášení · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#E8472A">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-hero">
+    <div class="auth-logo">ZAZA</div>
+    <div class="auth-sub">BaseCamp</div>
+    <div class="auth-tag">Dokumenty a návody pro tým ZaZa</div>
+  </div>
+  <div class="auth-body">
+    <form id="form" novalidate>
+      <h1>Přihlášení</h1>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="field">
+        <label for="username">Uživatelské jméno</label>
+        <input class="input" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="password">Heslo</label>
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn block" type="submit" id="submit">Přihlásit se</button>
+      <a href="/zapomenute-heslo.html" style="align-self:center;font-weight:600;padding:8px">Zapomenuté heslo?</a>
+      <div class="auth-foot">ZaZa Brno</div>
+    </form>
+  </div>
+</div>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  const next = new URLSearchParams(location.search).get('next');
+  const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/uvod.html';
+  try { if ((await BC.api('setup-status')).needsSetup) { location.href = '/setup.html'; return; } } catch {}
+  try { await BC.api('me', { allow401: true }); location.href = target; return; } catch {}
+
+  const form = document.getElementById('form');
+  const err = document.getElementById('err');
+  const btn = document.getElementById('submit');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    btn.disabled = true; btn.textContent = 'Přihlašuji…';
+    try {
+      await BC.api('login', { method: 'POST', allow401: true, body: { username: form.username.value, password: form.password.value } });
+      location.href = target;
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+      btn.disabled = false; btn.textContent = 'Přihlásit se';
+    }
+  });
+})();
+</script>
+</body>
+</html>

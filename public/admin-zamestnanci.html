@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zaměstnanci · Admin · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'admin', admin: true });
+  const { esc } = BC;
+  const meta = BC.meta;
+  let users = [];
+
+  document.getElementById('main').innerHTML = `
+    ${BC.adminTabs('zamestnanci')}
+    <div class="row"><h1>Zaměstnanci</h1><span class="spacer"></span>
+      <button type="button" class="btn small" id="addToggle" aria-expanded="false" aria-controls="addForm">${BC.icon('plus', 16)}Přidat</button></div>
+    <form class="card card-pad stack" id="addForm" style="gap:14px" hidden novalidate>
+      <h2>Nový zaměstnanec</h2>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="field"><label for="name">Jméno a příjmení</label><input class="input" id="name" autocomplete="off"></div>
+      <div class="field"><label for="username">Uživatelské jméno</label><input class="input" id="username" autocapitalize="none" spellcheck="false" autocomplete="off"><span class="hint">Doplní se samo podle jména, můžeš ho upravit.</span></div>
+      <div class="field"><label for="email">E-mail</label><input class="input" id="email" type="email" autocomplete="off"><span class="hint">Přijde na něj odkaz na nastavení hesla.</span></div>
+      <fieldset><legend>Pozice</legend><div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="positions" value="${p.id}">${esc(p.name)}</label>`).join('')}</div></fieldset>
+      <div class="field"><label for="role">Role</label><select class="input" id="role"><option value="employee">Zaměstnanec</option><option value="admin">Admin</option></select></div>
+      <button class="btn" type="submit" id="save">Založit a poslat pozvánku</button>
+    </form>
+    <div class="success" id="linkBox" hidden></div>
+    <div style="position:relative">
+      <label for="q" class="sr-only">Hledat zaměstnance</label>
+      <input class="input" id="q" type="search" placeholder="Hledat jméno nebo pozici" style="padding-left:44px">
+      <span style="position:absolute;left:14px;top:15px;color:var(--muted-2)">${BC.icon('search', 20)}</span>
+    </div>
+    <div class="card" id="list"></div>
+  `;
+
+  const form = document.getElementById('addForm');
+  const toggle = document.getElementById('addToggle');
+  const nameIn = document.getElementById('name');
+  toggle.addEventListener('click', () => {
+    form.hidden = !form.hidden; toggle.setAttribute('aria-expanded', String(!form.hidden));
+    if (!form.hidden) nameIn.focus();
+  });
+  let userEdited = false;
+  form.username.addEventListener('input', () => { userEdited = true; });
+  nameIn.addEventListener('input', () => {
+    if (userEdited) return;
+    form.username.value = nameIn.value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .trim().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '');
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.hidden = true;
+    const btn = document.getElementById('save');
+    btn.disabled = true;
+    try {
+      const r = await BC.api('admin/users', { method: 'POST', body: {
+        name: nameIn.value, username: form.username.value, email: form.email.value, role: form.role.value,
+        positions: [...form.querySelectorAll('[name=positions]:checked')].map((c) => c.value),
+      } });
+      const box = document.getElementById('linkBox');
+      if (r.mailSent) {
+        BC.toast(`Pozvánka odešla na ${form.email.value}.`);
+        box.hidden = true;
+      } else {
+        box.innerHTML = `E-mail se nepodařilo odeslat. Pošli zaměstnanci tento odkaz sám (platí 3 dny):<br><input class="input" readonly value="${esc(r.link)}" style="margin-top:8px" onfocus="this.select()">`;
+        box.hidden = false;
+      }
+      form.reset(); userEdited = false; form.hidden = true; toggle.setAttribute('aria-expanded', 'false');
+      await load();
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+    finally { btn.disabled = false; }
+  });
+
+  function render() {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const shown = users.filter((u) => !q || `${u.name} ${u.username} ${u.positions.map(BC.positionName).join(' ')}`.toLowerCase().includes(q));
+    document.getElementById('list').innerHTML = shown.length ? shown.map((u) => `
+      <a class="item" href="/admin-zamestnanec.html?id=${esc(u.id)}">
+        <span class="avatar${u.active ? '' : ' off'}" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(u.name))}</span>
+        <span class="item-main"><span class="item-title" style="${u.active ? '' : 'color:var(--muted-2)'}">${esc(u.name)}${u.role === 'admin' ? ' <span class="pill admin">Admin</span>' : ''}</span>
+        <span class="item-sub">${!u.active ? 'Deaktivovaný účet' : !u.hasPassword ? 'Čeká na nastavení hesla' : (u.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice')}</span></span>
+        ${u.active ? (u.missing ? `<span class="pill no">✗ ${u.missing}</span>` : '<span class="pill ok">✓ vše</span>') : ''}
+      </a>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
+  }
+  document.getElementById('q').addEventListener('input', render);
+
+  async function load() { users = (await BC.api('admin/users')).users; render(); }
+  await load();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

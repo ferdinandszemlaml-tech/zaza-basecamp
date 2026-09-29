@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>První spuštění · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#E8472A">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-hero">
+    <div class="auth-logo">ZAZA</div>
+    <div class="auth-sub">BaseCamp</div>
+  </div>
+  <div class="auth-body">
+    <form id="form" novalidate>
+      <h1>První spuštění</h1>
+      <p class="lead">Založ účet prvního admina. Instalační klíč je hodnota SETUP_KEY z nastavení Netlify. Tahle stránka po založení přestane fungovat.</p>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="field"><label for="setupKey">Instalační klíč</label><input class="input" id="setupKey" type="password" autocomplete="off" required></div>
+      <div class="field"><label for="name">Jméno a příjmení</label><input class="input" id="name" autocomplete="name" required></div>
+      <div class="field"><label for="username">Uživatelské jméno</label><input class="input" id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="např. ferda" required><span class="hint">Malá písmena bez diakritiky, čísla, tečka nebo pomlčka.</span></div>
+      <div class="field"><label for="email">E-mail</label><input class="input" id="email" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="password">Heslo</label><input class="input" id="password" type="password" autocomplete="new-password" minlength="8" required></div>
+      <button class="btn block" type="submit" id="submit">Založit admina</button>
+    </form>
+  </div>
+</div>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  try { if (!(await BC.api('setup-status')).needsSetup) { location.href = '/'; return; } } catch {}
+})();
+const form = document.getElementById('form');
+const btn = document.getElementById('submit');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err');
+  err.hidden = true;
+  btn.disabled = true;
+  try {
+    await BC.api('setup', { method: 'POST', allow401: true, body: {
+      setupKey: form.setupKey.value, name: document.getElementById('name').value, username: form.username.value,
+      email: form.email.value, password: form.password.value,
+    } });
+    location.href = '/admin-zamestnanci.html';
+  } catch (ex) {
+    err.textContent = ex.message; err.hidden = false; btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sekce · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'sekce' });
+  const { documents } = await BC.api('documents');
+  const { esc } = BC;
+  const sections = BC.meta.sections;
+  const requested = new URLSearchParams(location.search).get('s');
+  const current = sections.some((s) => s.id === requested) ? requested : sections[0].id;
+
+  const docs = documents.filter((d) => d.section === current)
+    .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || a.title.localeCompare(b.title, 'cs'));
+  const headings = [...new Set(docs.map((d) => d.heading))];
+
+  function versionRow(d, v, i) {
+    let status, text;
+    if (v.readAt) { status = 'ok'; text = `Přečteno ${BC.fmtDate(v.readAt)}`; }
+    else if (i === 0 && d.mandatory) { status = 'no'; text = 'Nové'; }
+    else { status = 'na'; text = i === 0 ? 'Nepovinné' : 'Starší verze'; }
+    return `<div class="item${status === 'no' ? ' new' : ''}" data-row>
+      ${BC.mark(status)}
+      <span class="item-main"><span class="item-title" style="${i ? 'font-weight:600;color:var(--ink-2)' : ''}">Verze ${esc(v.version)}</span>
+      <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.fileType(v.ext)} · ${text}</span></span>
+      ${BC.fileLink(v, i === 0 ? 'btn small' : 'btn small soft')}
+    </div>`;
+  }
+
+  document.getElementById('main').innerHTML = `
+    <nav class="filter" aria-label="Sekce">${sections.map((s) => `<a href="?s=${s.id}" data-sec="${s.id}" class="${s.id === current ? 'active' : ''}"${s.id === current ? ' aria-current="page"' : ''}>${esc(s.name)}</a>`).join('')}</nav>
+    <h1>${esc(BC.sectionName(current))}</h1>
+    ${docs.length ? headings.map((h) => `
+      <div class="label">${esc(h)}</div>
+      ${docs.filter((d) => d.heading === h).map((d) => `
+        <div class="card" data-sec="${esc(d.section)}">
+          <div class="doc-head">${BC.icon('file', 22, 'var(--sec)')}<span>${esc(d.title)}</span></div>
+          ${d.versions.map((v, i) => versionRow(d, v, i)).join('')}
+        </div>`).join('')}`).join('')
+      : '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'}
+  `;
+  document.querySelector('.filter .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  BC.trackOpens();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

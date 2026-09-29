@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dokumenty · Admin · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+.drop { border: 1.5px dashed var(--green); border-radius: 14px; background: #fff; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.drop:focus-within { box-shadow: 0 0 0 3px rgba(11,74,68,0.12); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.ftype { width: 44px; height: 44px; border-radius: 10px; background: var(--cream-2); color: var(--muted); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.addver { padding: 12px 16px 16px; border-top: 1px solid var(--line-2); background: #FAF8F4; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.addver .field { flex: 1 1 140px; }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'admin', admin: true });
+  const { esc } = BC;
+  const meta = BC.meta;
+  const maxMB = meta.maxFileBytes / 1024 / 1024;
+  let documents = [];
+
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    ${BC.adminTabs('dokumenty')}
+    <h1>Nový dokument</h1>
+    <form id="newDoc" class="stack" style="gap:16px" novalidate>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="field"><label for="section">Sekce</label>
+        <select class="input" id="section">${meta.sections.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="heading">Nadpis</label>
+        <select class="input" id="heading"></select>
+        <input class="input" id="headingNew" placeholder="Např. Směrnice, Receptury, Návody" hidden aria-label="Nový nadpis"></div>
+      <div class="row" style="align-items:flex-start">
+        <div class="field" style="flex-grow:1"><label for="title">Název dokumentu</label><input class="input" id="title" maxlength="120"></div>
+        <div class="field" style="width:96px"><label for="version">Verze</label><input class="input" id="version" value="1.0" maxlength="15"></div>
+      </div>
+      <fieldset><legend>Povinné pro pozice</legend>
+        <div class="checks" id="mand">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="mandatoryFor" value="${p.id}">${esc(p.name)}</label>`).join('')}</div>
+        <span class="hint">Předvyplněno podle sekce. Odškrtni pozice, pro které dokument povinný není.</span>
+      </fieldset>
+      <div class="field"><span class="field-label" id="fileLabel">Soubor</span>
+        <label class="drop" id="drop"><input type="file" id="file" accept=".pdf,.doc,.docx,.xls,.xlsx" aria-labelledby="fileLabel">
+          <span class="ftype" id="ftype">${BC.icon('upload', 22)}</span>
+          <span class="item-main"><span class="item-title" id="fname">Vyber soubor</span><span class="item-sub" id="fsize">PDF, Word nebo Excel · max. ${maxMB} MB</span></span>
+        </label></div>
+      <button class="btn block" type="submit" id="save">${BC.icon('upload', 20)}Nahrát dokument</button>
+    </form>
+    <h2 style="margin-top:18px">Dokumenty a verze</h2>
+    <div id="list" class="stack" style="gap:12px"></div>
+  `;
+
+  const form = document.getElementById('newDoc');
+  const secSel = document.getElementById('section');
+  const headSel = document.getElementById('heading');
+  const headNew = document.getElementById('headingNew');
+  const fileInput = document.getElementById('file');
+  const titleIn = document.getElementById('title');
+
+  function fillHeadings() {
+    const hs = [...new Set(documents.filter((d) => d.section === secSel.value).map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+    const keep = headSel.value;
+    headSel.innerHTML = hs.map((h) => `<option>${esc(h)}</option>`).join('') + '<option value="__new">+ Nový nadpis…</option>';
+    headSel.value = hs.includes(keep) ? keep : (hs[0] ?? '__new');
+    headNew.hidden = headSel.value !== '__new';
+  }
+  function fillMandatory() {
+    const def = meta.defaultMandatory[secSel.value] ?? [];
+    form.querySelectorAll('[name=mandatoryFor]').forEach((c) => { c.checked = def.includes(c.value); });
+  }
+  secSel.addEventListener('change', () => { fillHeadings(); fillMandatory(); });
+  headSel.addEventListener('change', () => { headNew.hidden = headSel.value !== '__new'; if (!headNew.hidden) headNew.focus(); });
+
+  const typeOf = (name) => BC.fileType(String(name).split('.').pop().toLowerCase());
+  const sizeText = (b) => b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} kB`;
+  function checkFile(f) {
+    if (!f) return 'Vyber soubor.';
+    if (!/\.(pdf|docx?|xlsx?)$/i.test(f.name)) return 'Nahrát jde jen PDF, Word nebo Excel.';
+    if (f.size > meta.maxFileBytes) return `Soubor má ${sizeText(f.size)}, limit je ${maxMB} MB.`;
+    return null;
+  }
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files[0];
+    document.getElementById('fname').textContent = f ? f.name : 'Vyber soubor';
+    document.getElementById('fsize').textContent = f ? `${sizeText(f.size)} · max. ${maxMB} MB` : `PDF, Word nebo Excel · max. ${maxMB} MB`;
+    document.getElementById('ftype').textContent = f ? typeOf(f.name) : '';
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.hidden = true;
+    const heading = headSel.value === '__new' ? headNew.value.trim() : headSel.value;
+    const f = fileInput.files[0];
+    const problem = !heading ? 'Vyplň nadpis.' : !titleIn.value.trim() ? 'Vyplň název dokumentu.' : checkFile(f);
+    if (problem) { err.textContent = problem; err.hidden = false; err.scrollIntoView({ block: 'center' }); return; }
+    const fd = new FormData();
+    fd.append('section', secSel.value); fd.append('heading', heading);
+    fd.append('title', titleIn.value.trim()); fd.append('version', form.version.value.trim());
+    form.querySelectorAll('[name=mandatoryFor]:checked').forEach((c) => fd.append('mandatoryFor', c.value));
+    fd.append('file', f);
+    const btn = document.getElementById('save');
+    btn.disabled = true; btn.lastChild.textContent = 'Nahrávám…';
+    try {
+      await BC.api('admin/documents', { method: 'POST', form: fd });
+      BC.toast('Dokument je nahraný.');
+      titleIn.value = ''; form.version.value = '1.0'; fileInput.value = ''; fileInput.dispatchEvent(new Event('change'));
+      await load();
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+    } finally { btn.disabled = false; btn.lastChild.textContent = 'Nahrát dokument'; }
+  });
+
+  function renderList() {
+    const list = document.getElementById('list');
+    if (!documents.length) { list.innerHTML = '<div class="card empty">Zatím tu nejsou žádné dokumenty.</div>'; return; }
+    list.innerHTML = meta.sections.map((s) => {
+      const docs = documents.filter((d) => d.section === s.id)
+        .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || a.title.localeCompare(b.title, 'cs'));
+      if (!docs.length) return '';
+      return `<div class="label"><span class="sec" data-sec="${s.id}" style="font-size:12px">${esc(s.name)}</span></div>` + docs.map((d) => `
+        <div class="card" data-doc="${esc(d.id)}">
+          <div class="item" style="border-top:0">
+            <span class="item-main"><span class="item-title" style="font-size:16px">${esc(d.title)}</span>
+            <span class="item-sub">${esc(d.heading)} · povinné: ${d.mandatoryFor.length ? d.mandatoryFor.map(BC.positionName).map(esc).join(', ') : 'nikdo'}</span></span>
+            <button type="button" class="btn small soft" data-addver aria-expanded="false">${BC.icon('plus', 16)}Přidat verzi</button>
+          </div>
+          <form class="addver" hidden novalidate>
+            <div class="field" style="flex:0 0 96px"><label>Verze<input class="input" name="version" maxlength="15" placeholder="např. 1.1"></label></div>
+            <div class="field"><label>Soubor<input class="input" type="file" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx" style="padding-top:12px"></label></div>
+            <button class="btn small" type="submit" style="height:50px">Nahrát</button>
+          </form>
+          ${d.versions.map((v) => `<div class="item">
+            <span class="item-main"><span class="item-title" style="font-weight:600">Verze ${esc(v.version)} <span class="muted" style="font-weight:400">· ${BC.fmtDate(v.uploadedAt)} · ${BC.fileType(v.ext)}</span></span></span>
+            <a class="btn small soft" href="/api/files/${esc(v.id)}" target="_blank" rel="noopener">Otevřít</a>
+            <button type="button" class="icon-btn" data-del="${esc(v.id)}" data-label="${esc(d.title)} – verze ${esc(v.version)}" aria-label="Smazat verzi ${esc(v.version)} dokumentu ${esc(d.title)}">${BC.icon('trash', 20)}</button>
+          </div>`).join('')}
+        </div>`).join('');
+    }).join('');
+  }
+
+  document.getElementById('list').addEventListener('click', async (e) => {
+    const add = e.target.closest('[data-addver]');
+    if (add) {
+      const f = add.closest('.card').querySelector('.addver');
+      f.hidden = !f.hidden;
+      add.setAttribute('aria-expanded', String(!f.hidden));
+      if (!f.hidden) f.version.focus();
+      return;
+    }
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const card = del.closest('.card');
+      const last = card.querySelectorAll('[data-del]').length === 1;
+      const msg = `Smazat „${del.dataset.label}“?${last ? '\n\nJe to poslední verze, zmizí tím celý dokument.' : ''}\n\nZáznamy o přečtení zůstanou v profilech zaměstnanců.`;
+      if (!confirm(msg)) return;
+      try { await BC.api(`admin/versions/${del.dataset.del}`, { method: 'DELETE' }); BC.toast('Verze je smazaná.'); await load(); }
+      catch (ex) { BC.toast(ex.message, true); }
+    }
+  });
+  document.getElementById('list').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const docId = f.closest('[data-doc]').dataset.doc;
+    const file = f.file.files[0];
+    const problem = !f.version.value.trim() ? 'Zadej číslo verze.' : checkFile(file);
+    if (problem) { BC.toast(problem, true); return; }
+    const fd = new FormData();
+    fd.append('version', f.version.value.trim()); fd.append('file', file);
+    const btn = f.querySelector('button');
+    btn.disabled = true; btn.textContent = 'Nahrávám…';
+    try { await BC.api(`admin/documents/${docId}/versions`, { method: 'POST', form: fd }); BC.toast('Nová verze je nahraná. Všem se ukáže jako nepřečtená.'); await load(); }
+    catch (ex) { BC.toast(ex.message, true); btn.disabled = false; btn.textContent = 'Nahrát'; }
+  });
+
+  async function load() {
+    documents = (await BC.api('documents')).documents;
+    fillHeadings();
+    renderList();
+  }
+  await load();
+  fillMandatory();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

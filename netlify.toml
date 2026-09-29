@@ -1,0 +1,7 @@
+[build]
+  # Žádný build krok – soubory ve složce public se zveřejní tak, jak jsou.
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Můj profil · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  const me = await BC.init({ active: 'profil' });
+  const { reads } = await BC.api('my-reads');
+  const { esc } = BC;
+  const u = me.user;
+  const SHOW = 8;
+
+  const readRow = (r) => `<div class="item">${BC.mark('ok')}
+    <span class="item-main"><span class="item-title">${esc(r.title)}</span>
+    <span class="item-sub">${esc(BC.sectionName(r.section))} · verze ${esc(r.version)}${r.mandatory ? '' : ' · nepovinné'}</span></span>
+    <span class="small muted">${BC.fmtDate(r.at)}</span></div>`;
+
+  document.getElementById('main').innerHTML = `
+    <div class="row" style="gap:16px">
+      <div class="avatar" style="width:64px;height:64px;font-size:22px">${esc(BC.initials(u.name))}</div>
+      <div class="stack" style="gap:2px"><h1 style="font-size:24px">${esc(u.name)}</h1><span class="muted small">${esc(u.username)}${u.role === 'admin' ? ' · admin' : ''}</span></div>
+    </div>
+    ${u.positions.length ? `<div class="chips">${BC.posChips(u.positions)}</div>` : ''}
+    <div class="label">Přečtené dokumenty</div>
+    ${reads.length ? `<div class="card" id="reads">${reads.slice(0, SHOW).map(readRow).join('')}</div>
+      ${reads.length > SHOW ? `<button type="button" class="btn small soft" id="more" style="align-self:center">Zobrazit vše (${reads.length})</button>` : ''}`
+      : '<div class="card empty">Zatím jsi nic neotevřel/a.</div>'}
+
+    <div class="spacer" style="min-height:12px"></div>
+    <button type="button" class="btn outline block" id="pwToggle" aria-expanded="false" aria-controls="pwForm">Změnit heslo</button>
+    <form class="card card-pad stack" id="pwForm" hidden novalidate>
+      <div class="error" id="pwErr" role="alert" hidden></div>
+      <div class="field"><label for="cur">Současné heslo</label><input class="input" id="cur" type="password" autocomplete="current-password"></div>
+      <div class="field"><label for="n1">Nové heslo</label><input class="input" id="n1" type="password" autocomplete="new-password" minlength="8"><span class="hint">Aspoň 8 znaků.</span></div>
+      <div class="field"><label for="n2">Nové heslo znovu</label><input class="input" id="n2" type="password" autocomplete="new-password"></div>
+      <button class="btn" type="submit" id="pwSave">Uložit nové heslo</button>
+    </form>
+    <button type="button" class="btn ghost block" id="logout">Odhlásit se</button>
+  `;
+
+  document.getElementById('more')?.addEventListener('click', (e) => {
+    document.getElementById('reads').innerHTML = reads.map(readRow).join('');
+    e.currentTarget.remove();
+  });
+  const toggle = document.getElementById('pwToggle');
+  const form = document.getElementById('pwForm');
+  toggle.addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    toggle.setAttribute('aria-expanded', String(!form.hidden));
+    if (!form.hidden) form.cur.focus();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('pwErr');
+    err.hidden = true;
+    if (form.n1.value.length < 8) { err.textContent = 'Nové heslo musí mít aspoň 8 znaků.'; err.hidden = false; return; }
+    if (form.n1.value !== form.n2.value) { err.textContent = 'Nová hesla se neshodují.'; err.hidden = false; return; }
+    const btn = document.getElementById('pwSave');
+    btn.disabled = true;
+    try {
+      await BC.api('password/change', { method: 'POST', body: { current: form.cur.value, next: form.n1.value } });
+      form.reset(); form.hidden = true; toggle.setAttribute('aria-expanded', 'false');
+      BC.toast('Heslo je změněné. Na ostatních zařízeních se přihlas znovu.');
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+    } finally { btn.disabled = false; }
+  });
+  document.getElementById('logout').addEventListener('click', async () => {
+    try { await BC.api('logout', { method: 'POST', allow401: true }); } catch {}
+    location.href = '/';
+  });
+})().catch(BC.fail);
+</script>
+</body>
+</html>

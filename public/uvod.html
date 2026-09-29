@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Úvod · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  const me = await BC.init({ active: 'uvod' });
+  const { documents } = await BC.api('documents');
+  const { esc } = BC;
+  const mandatory = documents.filter((d) => d.mandatory);
+  const done = mandatory.filter((d) => d.versions[0].readAt).length;
+  const unread = mandatory.filter((d) => !d.versions[0].readAt);
+  const recent = documents.flatMap((d) => d.versions.filter((v) => v.readAt).map((v) => ({ d, v })))
+    .sort((a, b) => b.v.readAt.localeCompare(a.v.readAt)).slice(0, 3);
+  const pct = mandatory.length ? Math.round((done / mandatory.length) * 100) : 100;
+  const n = unread.length;
+  const countText = n === 0 ? 'Všechno povinné máš přečtené.' : `Máš <strong>${n} ${n === 1 ? 'dokument' : n < 5 ? 'dokumenty' : 'dokumentů'}</strong> k přečtení.`;
+
+  document.getElementById('main').innerHTML = `
+    <div class="stack" style="gap:6px"><h1>Ahoj, ${esc(BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p></div>
+    ${mandatory.length ? `<div class="card card-pad stack">
+      <div class="row small" style="font-weight:600"><span class="muted">Povinné dokumenty</span><span class="spacer"></span><span style="color:var(--green)">${done} z ${mandatory.length} přečteno</span></div>
+      <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Přečteno povinných dokumentů"><div style="width:${pct}%"></div></div>
+    </div>` : ''}
+    ${n ? `<div class="label">K přečtení</div>
+    <div class="stack">${unread.map((d) => { const v = d.versions[0]; return `
+      <a class="card item new" data-row href="/api/files/${esc(v.id)}" target="_blank" rel="noopener" data-open="${esc(v.id)}" style="border-top:0">
+        ${BC.mark('no')}
+        <span class="item-main">
+          <span class="sec" data-sec="${esc(d.section)}">${esc(BC.sectionName(d.section))}</span>
+          <span class="item-title" style="font-size:16px">${esc(d.title)}</span>
+          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.fileType(v.ext)}</span>
+        </span>
+        ${BC.icon('chevron', 20, 'var(--green)')}
+      </a>`; }).join('')}</div>` : ''}
+    <div class="label">Naposledy přečteno</div>
+    ${recent.length ? `<div class="card">${recent.map(({ d, v }) => `
+      <div class="item">${BC.mark('ok')}<span class="item-main"><span class="item-title">${esc(d.title)}</span><span class="item-sub">${esc(BC.sectionName(d.section))} · verze ${esc(v.version)}</span></span><span class="small muted">${BC.fmtDate(v.readAt)}</span></div>`).join('')}</div>`
+      : '<div class="card empty">Zatím jsi nic neotevřel/a. Dokumenty najdeš v Sekcích.</div>'}
+  `;
+  BC.trackOpens();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

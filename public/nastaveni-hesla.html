@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nastavení hesla · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#E8472A">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-hero">
+    <div class="auth-logo">ZAZA</div>
+    <div class="auth-sub">BaseCamp</div>
+  </div>
+  <div class="auth-body">
+    <form id="form" novalidate>
+      <h1>Nastavení hesla</h1>
+      <p class="lead">Zvol si heslo, kterým se budeš přihlašovat. Aspoň 8 znaků.</p>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="field">
+        <label for="password">Nové heslo</label>
+        <input class="input" id="password" type="password" autocomplete="new-password" minlength="8" required>
+      </div>
+      <div class="field">
+        <label for="password2">Heslo znovu</label>
+        <input class="input" id="password2" type="password" autocomplete="new-password" minlength="8" required>
+      </div>
+      <button class="btn block" type="submit" id="submit">Uložit heslo</button>
+      <a href="/" style="align-self:center;font-weight:600;padding:8px">Zpět na přihlášení</a>
+    </form>
+  </div>
+</div>
+<script src="/app.js"></script>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+// Odkaz schováme z adresního řádku, ať nezůstane v historii prohlížeče.
+history.replaceState(null, '', location.pathname);
+const form = document.getElementById('form');
+const err = document.getElementById('err');
+const btn = document.getElementById('submit');
+if (!token) { err.textContent = 'Odkaz je neúplný. Otevři ho znovu z e-mailu.'; err.hidden = false; btn.disabled = true; }
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.hidden = true;
+  const a = form.password.value, b = form.password2.value;
+  if (a.length < 8) { err.textContent = 'Heslo musí mít aspoň 8 znaků.'; err.hidden = false; return; }
+  if (a !== b) { err.textContent = 'Hesla se neshodují.'; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = 'Ukládám…';
+  try {
+    await BC.api('password/set', { method: 'POST', allow401: true, body: { token, password: a } });
+    location.href = '/uvod.html';
+  } catch (ex) {
+    err.textContent = ex.message; err.hidden = false;
+    btn.disabled = false; btn.textContent = 'Uložit heslo';
+  }
+});
+</script>
+</body>
+</html>

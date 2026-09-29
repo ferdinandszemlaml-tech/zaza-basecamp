@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zapomenuté heslo · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#E8472A">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="auth">
+  <div class="auth-hero">
+    <div class="auth-logo">ZAZA</div>
+    <div class="auth-sub">BaseCamp</div>
+  </div>
+  <div class="auth-body">
+    <form id="form" novalidate>
+      <h1>Zapomenuté heslo</h1>
+      <p class="lead">Zadej své uživatelské jméno. Pošleme ti e-mail s odkazem na nastavení nového hesla.</p>
+      <div class="error" id="err" role="alert" hidden></div>
+      <div class="success" id="done" role="status" hidden>Pokud účet existuje, poslali jsme e-mail s odkazem. Podívej se i do složky Hromadné nebo Spam.</div>
+      <div class="field" id="fieldWrap">
+        <label for="username">Uživatelské jméno</label>
+        <input class="input" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <button class="btn block" type="submit" id="submit">Poslat odkaz</button>
+      <a href="/" style="align-self:center;font-weight:600;padding:8px">Zpět na přihlášení</a>
+    </form>
+  </div>
+</div>
+<script src="/app.js"></script>
+<script>
+const form = document.getElementById('form');
+const btn = document.getElementById('submit');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err');
+  err.hidden = true;
+  if (!form.username.value.trim()) { err.textContent = 'Zadej uživatelské jméno.'; err.hidden = false; return; }
+  btn.disabled = true; btn.textContent = 'Odesílám…';
+  try {
+    await BC.api('password/forgot', { method: 'POST', allow401: true, body: { username: form.username.value } });
+    document.getElementById('done').hidden = false;
+    document.getElementById('fieldWrap').hidden = true;
+    btn.hidden = true;
+  } catch (ex) {
+    err.textContent = ex.message; err.hidden = false;
+    btn.disabled = false; btn.textContent = 'Poslat odkaz';
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Přehled seznámení · Admin · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.matrix a { text-decoration: none; color: var(--ink); font-weight: 700; }
+.matrix a:hover { color: var(--coral-dark); }
+.count-ok { color: var(--ok-text); font-weight: 700; }
+.count-no { color: var(--no-text); font-weight: 700; }
+@media (min-width: 900px) { .segmented { width: fit-content; } }
+</style>
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'admin', admin: true });
+  const { esc } = BC;
+  const sections = BC.meta.sections;
+  const requested = new URLSearchParams(location.search).get('s');
+  const current = sections.some((s) => s.id === requested) ? requested : sections[0].id;
+  const data = await BC.api(`admin/overview?section=${current}`);
+  const main = document.getElementById('main');
+
+  main.innerHTML = `
+    ${BC.adminTabs('prehled')}
+    <div class="row" style="flex-wrap:wrap;align-items:flex-end"><h1>Přehled seznámení</h1><span class="spacer"></span>
+      <div class="legend"><span>${BC.mark('ok')}přečteno</span><span>${BC.mark('no')}povinné, nepřečtené</span><span>${BC.mark('na')}nepovinné</span></div></div>
+    <div class="tools">
+      <nav class="filter" aria-label="Sekce">${sections.map((s) => `<a href="?s=${s.id}" data-sec="${s.id}" class="${s.id === current ? 'active' : ''}"${s.id === current ? ' aria-current="page"' : ''}>${esc(s.name)}</a>`).join('')}</nav>
+      <span class="spacer"></span>
+      <label class="row small" style="gap:8px;font-weight:600"><input type="checkbox" id="onlyRel" checked style="width:18px;height:18px;accent-color:var(--green)">Jen s povinnou pozicí v sekci</label>
+      <label for="q" class="sr-only">Hledat zaměstnance</label>
+      <input class="input" id="q" type="search" placeholder="Hledat jméno" style="width:220px;height:44px">
+    </div>
+    <div id="table"></div>
+    <p class="small muted" id="note"></p>
+  `;
+
+  function render() {
+    const only = document.getElementById('onlyRel').checked;
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const rows = data.rows.filter((r) => (!only || r.relevant) && (!q || r.name.toLowerCase().includes(q)));
+    const relevantCount = data.rows.filter((r) => r.relevant).length;
+    const el = document.getElementById('table');
+    if (!data.columns.length) { el.innerHTML = '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'; document.getElementById('note').textContent = ''; return; }
+    el.innerHTML = `<div class="card table-wrap"><table class="matrix">
+      <thead><tr><th scope="col">Zaměstnanec <span class="muted" style="font-weight:500">· podle chybějících</span></th>
+        ${data.columns.map((c) => `<th scope="col"><div>${esc(c.title)}</div><div class="muted" style="font-size:11px;font-weight:500">${esc(c.version)} · ${c.mandatoryFor.length ? c.mandatoryFor.map(BC.positionName).map(esc).join(', ') : 'nepovinné'}</div>
+          ${c.total ? `<div class="${c.done === c.total ? 'count-ok' : 'count-no'}" style="margin-top:6px;font-size:12px">${c.done} / ${c.total}</div>` : ''}</th>`).join('')}
+        <th scope="col">Chybí</th></tr></thead>
+      <tbody>${rows.length ? rows.map((r) => `<tr>
+        <td><a href="/admin-zamestnanec.html?id=${esc(r.id)}">${esc(r.name)}</a><div class="muted" style="font-size:12px">${r.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</div></td>
+        ${r.cells.map((c) => `<td>${BC.mark(c)}</td>`).join('')}
+        <td class="${r.missing ? 'count-no' : 'count-ok'}">${r.missing}</td></tr>`).join('')
+        : `<tr><td colspan="${data.columns.length + 2}" class="muted" style="text-align:center">Nikoho takového nenacházím.</td></tr>`}</tbody>
+    </table></div>`;
+    document.getElementById('note').textContent = `${relevantCount} z ${data.totalUsers} aktivních zaměstnanců má pozici, pro kterou je něco v sekci ${BC.sectionName(current)} povinné.${only ? ' Ostatní uvidíš po vypnutí filtru.' : ''}`;
+  }
+  document.getElementById('onlyRel').addEventListener('change', render);
+  document.getElementById('q').addEventListener('input', render);
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

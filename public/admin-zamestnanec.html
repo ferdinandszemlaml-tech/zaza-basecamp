@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profil zaměstnance · Admin · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  const me = await BC.init({ active: 'admin', admin: true });
+  const { esc } = BC;
+  const meta = BC.meta;
+  const id = new URLSearchParams(location.search).get('id');
+  if (!id) { location.href = '/admin-zamestnanci.html'; return; }
+
+  async function load() {
+    const { user: u, stats, reads } = await BC.api(`admin/users/${encodeURIComponent(id)}`);
+    const self = u.id === me.user.id;
+    const bySection = meta.sections.map((s) => ({ s, items: reads.filter((r) => r.section === s.id) })).filter((g) => g.items.length);
+
+    document.getElementById('main').innerHTML = `
+      <a href="/admin-zamestnanci.html" class="row" style="gap:4px;font-weight:700;text-decoration:none;padding:4px 0">${BC.icon('back', 18)}Zaměstnanci</a>
+      <div class="row" style="gap:14px">
+        <div class="avatar${u.active ? '' : ' off'}" style="width:58px;height:58px;font-size:20px">${esc(BC.initials(u.name))}</div>
+        <div class="stack" style="gap:2px"><h1 style="font-size:24px">${esc(u.name)}</h1>
+          <span class="small muted">${esc(u.username)} · ${esc(u.email)}</span>
+          ${!u.active ? '<span class="small" style="color:var(--coral-dark);font-weight:700">Deaktivovaný účet</span>' : !u.hasPassword ? '<span class="small" style="color:var(--no-text);font-weight:700">Ještě si nenastavil/a heslo</span>' : ''}</div>
+      </div>
+
+      <form class="card card-pad stack" id="edit" style="gap:14px" novalidate>
+        <div class="error" id="err" role="alert" hidden></div>
+        <div class="field"><label for="ename">Jméno a příjmení</label><input class="input" id="ename" value="${esc(u.name)}"></div>
+        <div class="field"><label for="eemail">E-mail</label><input class="input" id="eemail" type="email" value="${esc(u.email)}"></div>
+        <fieldset><legend>Pozice</legend><div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="positions" value="${p.id}"${u.positions.includes(p.id) ? ' checked' : ''}>${esc(p.name)}</label>`).join('')}</div></fieldset>
+        <fieldset><legend>Role</legend>
+          <div class="segmented" role="radiogroup" aria-label="Role">
+            <button type="button" role="radio" data-role="employee" class="${u.role === 'employee' ? 'active' : ''}" aria-checked="${u.role === 'employee'}"${self ? ' disabled' : ''}>Zaměstnanec</button>
+            <button type="button" role="radio" data-role="admin" class="${u.role === 'admin' ? 'active' : ''}" aria-checked="${u.role === 'admin'}"${self ? ' disabled' : ''}>Admin</button>
+          </div>
+          ${self ? '<span class="hint">Svou vlastní roli změnit nemůžeš.</span>' : ''}
+        </fieldset>
+        <button class="btn" type="submit" id="save">Uložit změny</button>
+      </form>
+
+      <div class="stats">
+        <div class="stat ok"><b>✓ ${stats.read}</b>přečteno</div>
+        <div class="stat no"><b>✗ ${stats.missing}</b>povinné chybí</div>
+        <div class="stat na"><b>– ${stats.optional}</b>nepovinné</div>
+      </div>
+      <p class="hint" style="margin:-6px 0 0">Počítá se vždy nejnovější verze každého dokumentu.</p>
+
+      ${stats.missingDocs.length ? `<div class="label">Chybí přečíst</div>
+      <div class="card">${stats.missingDocs.map((d) => `<div class="item">${BC.mark('no')}<span class="item-main"><span class="item-title">${esc(d.title)} · ${esc(d.version)}</span><span class="item-sub">${esc(BC.sectionName(d.section))}</span></span></div>`).join('')}</div>` : ''}
+
+      <div class="label">Historie čtení</div>
+      ${bySection.length ? `<div class="card">${bySection.map(({ s, items }) => `
+        <div class="group-head" data-sec="${s.id}" style="color:var(--sec-text)">${esc(s.name)}</div>
+        ${items.map((r) => `<div class="item">${BC.mark('ok')}<span class="item-main"><span class="item-title">${esc(r.title)} · ${esc(r.version)}</span>${r.mandatory ? '' : '<span class="item-sub">nepovinné</span>'}</span><span class="small muted">${BC.fmtDate(r.at)}</span></div>`).join('')}`).join('')}</div>`
+        : '<div class="card empty">Zatím nic neotevřel/a.</div>'}
+
+      ${u.active ? `<button type="button" class="btn outline block" id="reset">${u.hasPassword ? 'Poslat odkaz na nové heslo' : 'Znovu poslat pozvánku'}</button>` : ''}
+      <div class="success" id="linkBox" hidden></div>
+      ${self ? '' : `<button type="button" class="btn ghost block" id="toggleActive">${u.active ? 'Deaktivovat účet' : 'Znovu aktivovat účet'}</button>`}
+    `;
+
+    let role = u.role;
+    document.querySelectorAll('[data-role]').forEach((b) => b.addEventListener('click', () => {
+      role = b.dataset.role;
+      document.querySelectorAll('[data-role]').forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-checked', String(x === b)); });
+    }));
+    const form = document.getElementById('edit');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.hidden = true;
+      const btn = document.getElementById('save');
+      btn.disabled = true;
+      try {
+        await BC.api(`admin/users/${encodeURIComponent(u.id)}`, { method: 'PATCH', body: {
+          name: document.getElementById('ename').value, email: document.getElementById('eemail').value,
+          positions: [...form.querySelectorAll('[name=positions]:checked')].map((c) => c.value), role,
+        } });
+        BC.toast('Uloženo.');
+        await load();
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; btn.disabled = false; }
+    });
+    document.getElementById('reset')?.addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      try {
+        const r = await BC.api(`admin/users/${encodeURIComponent(u.id)}/send-reset`, { method: 'POST' });
+        const box = document.getElementById('linkBox');
+        if (r.mailSent) { BC.toast(`E-mail odešel na ${u.email}.`); box.hidden = true; }
+        else { box.innerHTML = `E-mail se nepodařilo odeslat. Předej odkaz sám:<br><input class="input" readonly value="${esc(r.link)}" style="margin-top:8px" onfocus="this.select()">`; box.hidden = false; }
+      } catch (ex) { BC.toast(ex.message, true); }
+      b.disabled = false;
+    });
+    document.getElementById('toggleActive')?.addEventListener('click', async () => {
+      const msg = u.active
+        ? `Deaktivovat účet ${u.name}?\n\nOdhlásí se ze všech zařízení a nebude se moct přihlásit. Historie čtení zůstane.`
+        : `Znovu aktivovat účet ${u.name}?`;
+      if (!confirm(msg)) return;
+      try { await BC.api(`admin/users/${encodeURIComponent(u.id)}`, { method: 'PATCH', body: { active: !u.active } }); BC.toast('Uloženo.'); await load(); }
+      catch (ex) { BC.toast(ex.message, true); }
+    });
+  }
+  await load();
+})().catch(BC.fail);
+</script>
+</body>
+</html>
