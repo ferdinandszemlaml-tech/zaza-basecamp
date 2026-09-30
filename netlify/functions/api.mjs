@@ -48,6 +48,13 @@ function password(v) {
   if (p.length > 200) bad('Heslo je příliš dlouhé.');
   return p;
 }
+function phone(v) {
+  const p = String(v ?? '').trim().replace(/\s+/g, ' ');
+  if (!p) return '';
+  const digits = p.replace(/\D/g, '');
+  if (!/^\+?[0-9 ()-]+$/.test(p) || digits.length < 9 || digits.length > 15) bad('Zadej platné telefonní číslo, např. +420 777 123 456.');
+  return p;
+}
 function positions(list) {
   const arr = Array.isArray(list) ? list : [];
   if (arr.some((p) => !POSITION_IDS.includes(p))) bad('Neznámá pozice.');
@@ -63,7 +70,7 @@ async function body(req) {
 }
 
 const publicUser = (u) => ({
-  id: u.id, name: u.name, username: u.username, email: u.email, role: u.role,
+  id: u.id, name: u.name, username: u.username, email: u.email, phone: u.phone ?? '', role: u.role,
   positions: u.positions, active: u.active, createdAt: u.createdAt, hasPassword: Boolean(u.passwordHash),
 });
 
@@ -231,6 +238,27 @@ const ROUTES = {
     });
   },
 
+  // Zaměstnanec si sám upravuje telefon.
+  'PATCH me': async (req) => {
+    const me = await requireUser(req);
+    const b = await body(req);
+    const users = await loadUsers();
+    const u = users.find((x) => x.id === me.id);
+    if (b.phone !== undefined) u.phone = phone(b.phone);
+    await saveUsers(users);
+    return json(200, { ok: true, user: publicUser(u) });
+  },
+
+  // Kontakty na celý tým – vidí všichni přihlášení.
+  'GET team': async (req) => {
+    await requireUser(req);
+    const users = (await loadUsers()).filter((u) => u.active);
+    users.sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+    return json(200, {
+      team: users.map((u) => ({ id: u.id, name: u.name, positions: u.positions, phone: u.phone ?? '', role: u.role })),
+    });
+  },
+
   // ── hesla ──
   'POST password/forgot': async (req) => {
     const b = await body(req);
@@ -391,7 +419,7 @@ const ROUTES = {
     const users = await loadUsers();
     const user = {
       id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), username: username(b.username),
-      email: email(b.email), role: b.role === 'admin' ? 'admin' : 'employee', positions: positions(b.positions),
+      email: email(b.email), phone: phone(b.phone), role: b.role === 'admin' ? 'admin' : 'employee', positions: positions(b.positions),
       active: true, passwordHash: null, pwv: 1, createdAt: new Date().toISOString(),
     };
     if (users.some((x) => x.username === user.username)) bad('Toto uživatelské jméno už existuje.');
@@ -425,6 +453,7 @@ const ROUTES = {
       if (users.some((x) => x.id !== u.id && x.email === e)) bad('Tento e-mail už má jiný účet.');
       u.email = e;
     }
+    if (b.phone !== undefined) u.phone = phone(b.phone);
     if (b.positions !== undefined) u.positions = positions(b.positions);
     if (b.role !== undefined) u.role = b.role === 'admin' ? 'admin' : 'employee';
     if (b.active !== undefined && Boolean(b.active) !== u.active) {

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tým · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+.call { width: 48px; height: 48px; border-radius: 50%; background: var(--green); color: #fff; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
+.call:hover { background: #083A35; color: #fff; }
+.num { font-size: 15px; font-weight: 700; color: var(--green); text-decoration: none; }
+.nophone { font-size: 13px; color: var(--muted-2); }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'tym' });
+  const { team } = await BC.api('team');
+  const { esc } = BC;
+  const positions = BC.meta.positions;
+  let pos = '';
+
+  document.getElementById('main').innerHTML = `
+    <h1>Tým</h1>
+    <p class="lead">Kontakty na kolegy. Klepnutím na číslo rovnou voláš.</p>
+    <div style="position:relative">
+      <label for="q" class="sr-only">Hledat kolegu</label>
+      <input class="input" id="q" type="search" placeholder="Hledat jméno" style="padding-left:44px">
+      <span style="position:absolute;left:14px;top:15px;color:var(--muted-2)">${BC.icon('search', 20)}</span>
+    </div>
+    <nav class="filter" aria-label="Pozice" id="posFilter">
+      <a href="#" data-pos="" class="active" aria-current="true">Všichni</a>
+      ${positions.map((p) => `<a href="#" data-pos="${p.id}">${esc(p.name)}</a>`).join('')}
+    </nav>
+    <div class="card" id="list"></div>
+  `;
+
+  function render() {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const shown = team.filter((m) => (!pos || m.positions.includes(pos)) && (!q || m.name.toLowerCase().includes(q)));
+    document.getElementById('list').innerHTML = shown.length ? shown.map((m) => `
+      <div class="item">
+        <span class="avatar" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(m.name))}</span>
+        <span class="item-main"><span class="item-title">${esc(m.name)}</span>
+          <span class="item-sub">${m.positions.map(BC.positionName).map(esc).join(' · ') || (m.role === 'admin' ? 'Vedení' : '')}</span>
+          ${m.phone ? `<a class="num" href="${BC.telHref(m.phone)}">${esc(m.phone)}</a>` : '<span class="nophone">bez čísla</span>'}</span>
+        ${m.phone ? `<a class="call" href="${BC.telHref(m.phone)}" aria-label="Zavolat ${esc(m.name)}">${BC.icon('phone', 22)}</a>` : ''}
+      </div>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
+  }
+  document.getElementById('q').addEventListener('input', render);
+  document.getElementById('posFilter').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-pos]');
+    if (!a) return;
+    e.preventDefault();
+    pos = a.dataset.pos;
+    document.querySelectorAll('#posFilter a').forEach((x) => { x.classList.toggle('active', x === a); x.toggleAttribute('aria-current', x === a); });
+    render();
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

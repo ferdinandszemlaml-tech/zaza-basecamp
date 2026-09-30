@@ -12,6 +12,8 @@ const BC = (() => {
     plus: '<path d="M12 5v14M5 12h14"/>',
     upload: '<path d="M12 20V9"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+    team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.6-5.5 6.5-5.5s5.5 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>',
+    phone: '<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>',
   };
   const icon = (name, size = 20, color = 'currentColor') =>
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -47,6 +49,7 @@ const BC = (() => {
   const fmtShort = (iso) => { const d = new Date(iso); return `${d.getDate()}. ${d.getMonth() + 1}.`; };
   const fileType = (ext) => ({ pdf: 'PDF', doc: 'Word', docx: 'Word', xls: 'Excel', xlsx: 'Excel' }[ext] ?? ext.toUpperCase());
   const mark = (status) => `<span class="mark ${status}" aria-label="${{ ok: 'přečteno', no: 'povinné, nepřečtené', na: 'nepovinné' }[status]}">${{ ok: '✓', no: '✗', na: '–' }[status]}</span>`;
+  const telHref = (p) => `tel:${String(p).replace(/[^0-9+]/g, '')}`;
   const posChips = (list) => list.map((p) => `<span class="chip" data-pos="${esc(p)}">${esc(positionName(p))}</span>`).join('');
 
   function toast(msg, isError = false) {
@@ -64,6 +67,7 @@ const BC = (() => {
     const items = [
       { id: 'uvod', href: '/uvod.html', label: 'Úvod', icon: 'home', badge: me.unread },
       { id: 'sekce', href: '/sekce.html', label: 'Sekce', icon: 'folder' },
+      { id: 'tym', href: '/tym.html', label: 'Tým', icon: 'team' },
       { id: 'profil', href: '/profil.html', label: 'Profil', icon: 'user' },
       ...(admin ? [{ id: 'admin', href: '/admin-dokumenty.html', label: 'Admin', icon: 'shield' }] : []),
     ];
@@ -123,6 +127,6 @@ const BC = (() => {
 
   return {
     api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, fileLink, adminTabs, posChips,
-    trackOpens, fail, sectionName, positionName, get meta() { return meta; },
+    trackOpens, fail, telHref, sectionName, positionName, get meta() { return meta; },
   };
 })();

@@ -29,6 +29,7 @@
       <div class="field"><label for="name">Jméno a příjmení</label><input class="input" id="name" autocomplete="off"></div>
       <div class="field"><label for="username">Uživatelské jméno</label><input class="input" id="username" autocapitalize="none" spellcheck="false" autocomplete="off"><span class="hint">Doplní se samo podle jména, můžeš ho upravit.</span></div>
       <div class="field"><label for="email">E-mail</label><input class="input" id="email" type="email" autocomplete="off"><span class="hint">Přijde na něj odkaz na nastavení hesla.</span></div>
+      <div class="field"><label for="phone">Telefon <span class="muted" style="font-weight:400">(nepovinné)</span></label><input class="input" id="phone" type="tel" inputmode="tel" placeholder="+420 777 123 456" autocomplete="off"></div>
       <fieldset><legend>Pozice</legend><div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="positions" value="${p.id}">${esc(p.name)}</label>`).join('')}</div></fieldset>
       <div class="field"><label for="role">Role</label><select class="input" id="role"><option value="employee">Zaměstnanec</option><option value="admin">Admin</option></select></div>
       <button class="btn" type="submit" id="save">Založit a poslat pozvánku</button>
@@ -64,7 +65,7 @@
     btn.disabled = true;
     try {
       const r = await BC.api('admin/users', { method: 'POST', body: {
-        name: nameIn.value, username: form.username.value, email: form.email.value, role: form.role.value,
+        name: nameIn.value, username: form.username.value, email: form.email.value, phone: document.getElementById('phone').value, role: form.role.value,
         positions: [...form.querySelectorAll('[name=positions]:checked')].map((c) => c.value),
       } });
       const box = document.getElementById('linkBox');
