@@ -68,7 +68,9 @@
 
       ${u.active ? `<button type="button" class="btn outline block" id="reset">${u.hasPassword ? 'Poslat odkaz na nové heslo' : 'Znovu poslat pozvánku'}</button>` : ''}
       <div class="success" id="linkBox" hidden></div>
-      ${self ? '' : `<button type="button" class="btn ghost block" id="toggleActive">${u.active ? 'Deaktivovat účet' : 'Znovu aktivovat účet'}</button>`}
+      ${self ? '' : `<button type="button" class="btn ${u.active ? 'ghost' : 'outline'} block" id="toggleActive">${u.active ? 'Deaktivovat účet' : 'Znovu aktivovat účet'}</button>`}
+      ${!self && !u.active ? `<button type="button" class="btn ghost block" id="deleteUser" style="color:var(--coral-dark)">${BC.icon('trash', 18)}Smazat účet natrvalo</button>
+      <p class="hint" style="text-align:center;margin:-8px 0 0">Smaže i historii čtení. Nejde vrátit zpět.</p>` : ''}
     `;
 
     let role = u.role;
@@ -102,6 +104,13 @@
         else { box.innerHTML = `E-mail se nepodařilo odeslat. Předej odkaz sám:<br><input class="input" readonly value="${esc(r.link)}" style="margin-top:8px" onfocus="this.select()">`; box.hidden = false; }
       } catch (ex) { BC.toast(ex.message, true); }
       b.disabled = false;
+    });
+    document.getElementById('deleteUser')?.addEventListener('click', async () => {
+      if (!confirm(`Smazat účet ${u.name} natrvalo?\n\nSmaže se i jeho historie čtení (doklad o seznámení se směrnicemi). Tohle nejde vrátit zpět.`)) return;
+      try {
+        await BC.api(`admin/users/${encodeURIComponent(u.id)}`, { method: 'DELETE' });
+        location.href = '/admin-zamestnanci.html';
+      } catch (ex) { BC.toast(ex.message, true); }
     });
     document.getElementById('toggleActive')?.addEventListener('click', async () => {
       const msg = u.active

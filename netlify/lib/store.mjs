@@ -19,6 +19,11 @@ export async function setJSON(key, value) {
   await dataStore().setJSON(key, value);
 }
 
+export async function deleteJSON(key) {
+  if (useMemory()) { mem.data.delete(key); return; }
+  await dataStore().delete(key);
+}
+
 export async function getFile(key) {
   if (useMemory()) return mem.files.get(key) ?? null;
   const res = await fileStore().getWithMetadata(key, { type: 'arrayBuffer' });

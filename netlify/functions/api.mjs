@@ -1,5 +1,5 @@
 // ZaZa-BaseCamp – jediná serverová funkce. Všechny adresy /api/* vedou sem.
-import { getJSON, setJSON, getFile, setFile, deleteFile } from '../lib/store.mjs';
+import { getJSON, setJSON, deleteJSON, getFile, setFile, deleteFile } from '../lib/store.mjs';
 import {
   hashPassword, verifyPassword, sessionCookie, clearCookie, readSession,
   newToken, hashToken, safeEqual, newId,
@@ -464,6 +464,20 @@ const ROUTES = {
     if (u.id === me.id && (!u.active || u.role !== 'admin')) bad('Sám sobě nemůžeš odebrat admina ani deaktivovat účet.');
     await saveUsers(users);
     return json(200, { ok: true, user: publicUser(u) });
+  },
+
+  // Trvalé smazání – jen deaktivovaného účtu. Smaže i jeho historii čtení.
+  'DELETE admin/users/:id': async (req, { id }) => {
+    const me = await requireAdmin(req);
+    const users = await loadUsers();
+    const u = users.find((x) => x.id === id);
+    if (!u) throw new HttpError(404, 'Zaměstnanec neexistuje.');
+    if (u.id === me.id) bad('Sám sebe smazat nemůžeš.');
+    if (u.active) bad('Nejdřív účet deaktivuj, pak ho půjde smazat.');
+    await saveUsers(users.filter((x) => x.id !== u.id));
+    await deleteJSON(`reads/${u.id}`);
+    await setJSON('tokens', (await getJSON('tokens', [])).filter((t) => t.userId !== u.id));
+    return json(200, { ok: true });
   },
 
   'POST admin/users/:id/send-reset': async (req, { id }) => {

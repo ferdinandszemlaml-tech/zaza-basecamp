@@ -18,6 +18,7 @@
   const { esc } = BC;
   const meta = BC.meta;
   let users = [];
+  let showInactive = false;
 
   document.getElementById('main').innerHTML = `
     ${BC.adminTabs('zamestnanci')}
@@ -41,6 +42,7 @@
       <span style="position:absolute;left:14px;top:15px;color:var(--muted-2)">${BC.icon('search', 20)}</span>
     </div>
     <div class="card" id="list"></div>
+    <button type="button" class="btn small soft" id="showOff" style="align-self:center" hidden></button>
   `;
 
   const form = document.getElementById('addForm');
@@ -84,7 +86,11 @@
 
   function render() {
     const q = document.getElementById('q').value.trim().toLowerCase();
-    const shown = users.filter((u) => !q || `${u.name} ${u.username} ${u.positions.map(BC.positionName).join(' ')}`.toLowerCase().includes(q));
+    const inactive = users.filter((u) => !u.active).length;
+    const more = document.getElementById('showOff');
+    more.hidden = inactive === 0;
+    more.textContent = showInactive ? 'Skrýt deaktivované' : `Zobrazit deaktivované (${inactive})`;
+    const shown = users.filter((u) => (showInactive || u.active)).filter((u) => !q || `${u.name} ${u.username} ${u.positions.map(BC.positionName).join(' ')}`.toLowerCase().includes(q));
     document.getElementById('list').innerHTML = shown.length ? shown.map((u) => `
       <a class="item" href="/admin-zamestnanec.html?id=${esc(u.id)}">
         <span class="avatar${u.active ? '' : ' off'}" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(u.name))}</span>
@@ -94,6 +100,7 @@
       </a>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
   }
   document.getElementById('q').addEventListener('input', render);
+  document.getElementById('showOff').addEventListener('click', () => { showInactive = !showInactive; render(); });
 
   async function load() { users = (await BC.api('admin/users')).users; render(); }
   await load();
