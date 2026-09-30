@@ -523,6 +523,10 @@ const ROUTES = {
     const l = links.find((x) => x.id === id);
     if (!l) throw new HttpError(404, 'Odkaz neexistuje.');
     if (b.title !== undefined) l.title = text(b.title, { max: 120, label: 'Název' });
+    if (b.heading !== undefined) {
+      const h = text(b.heading, { max: 60, label: 'Nadpis' });
+      if (h !== l.heading) { l.order = await nextOrder(l.section, h); l.heading = h; }
+    }
     if (b.url !== undefined && (l.type ?? 'link') === 'link') l.url = linkUrl(b.url);
     if (b.description !== undefined) {
       l.description = longText(b.description, 'Popis');
@@ -548,6 +552,10 @@ const ROUTES = {
     if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
     if (b.title !== undefined) doc.title = text(b.title, { max: 120, label: 'Název' });
     if (b.description !== undefined) doc.description = longText(b.description, 'Popis');
+    if (b.heading !== undefined) {
+      const h = text(b.heading, { max: 60, label: 'Nadpis' });
+      if (h !== doc.heading) { doc.order = await nextOrder(doc.section, h); doc.heading = h; }
+    }
     await saveDocs(docs);
     return json(200, { ok: true });
   },

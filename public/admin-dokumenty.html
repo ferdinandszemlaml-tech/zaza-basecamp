@@ -198,6 +198,13 @@
   });
 
   let groups = {};
+  // Výběr nadpisu v úpravě položky (existující nadpisy sekce + nový).
+  const headingsOf = (sectionId) => [...new Set([...documents, ...links].filter((x) => x.section === sectionId).map((x) => x.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+  const headingPicker = (x) => `<div class="field"><label>Nadpis<select class="input" name="headingSel" data-hsel>
+      ${headingsOf(x.section).map((h) => `<option${h === x.heading ? ' selected' : ''}>${esc(h)}</option>`).join('')}
+      <option value="__new">+ Nový nadpis…</option></select></label>
+      <input class="input" name="headingNew" placeholder="Název nového nadpisu" hidden aria-label="Nový nadpis"></div>`;
+  const pickedHeading = (f) => (f.elements.headingSel.value === '__new' ? f.elements.headingNew.value.trim() : f.elements.headingSel.value);
   const moveBtns = (key, id, i, n) => `<span class="row" style="gap:2px;margin-left:auto">
       <button type="button" class="icon-btn move-btn" data-move="-1" data-group="${esc(key)}" data-id="${esc(id)}" ${i === 0 ? 'disabled' : ''} aria-label="Posunout výš">${BC.icon('up', 20)}</button>
       <button type="button" class="icon-btn move-btn" data-move="1" data-group="${esc(key)}" data-id="${esc(id)}" ${i === n - 1 ? 'disabled' : ''} aria-label="Posunout níž">${BC.icon('down', 20)}</button>
@@ -211,9 +218,10 @@
             <button type="button" class="btn small soft" data-addver aria-expanded="false">${BC.icon('plus', 16)}Přidat verzi</button>
           </div>
           ${d.description ? `<div class="desc" style="padding-left:16px">${esc(d.description)}</div>` : ''}
-          <div class="row" style="padding:0 8px 10px 16px;gap:8px"><button type="button" class="btn small ghost" data-editdesc aria-expanded="false" style="color:var(--green);padding:0 8px;height:36px">Upravit název a popis</button>${mv}</div>
+          <div class="row" style="padding:0 8px 10px 16px;gap:8px"><button type="button" class="btn small ghost" data-editdesc aria-expanded="false" style="color:var(--green);padding:0 8px;height:36px">Upravit (název, popis, nadpis)</button>${mv}</div>
           <form class="descform" hidden novalidate style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
             <div class="field"><label>Název<input class="input" name="title" maxlength="120" value="${esc(d.title)}"></label></div>
+            ${headingPicker(d)}
             <div class="field"><label>Popis <span class="muted" style="font-weight:400">(nepovinné)</span><textarea class="input textarea" name="description" rows="4" maxlength="3000">${esc(d.description)}</textarea></label></div>
             <button class="btn small" type="submit" style="align-self:flex-start">Uložit</button>
           </form>
@@ -255,6 +263,7 @@
           <div class="row" style="padding:0 8px 10px 16px;gap:8px"><button type="button" class="btn small ghost" data-editlink aria-expanded="false" style="color:var(--green);padding:0 8px;height:36px">${l.type === 'note' ? 'Upravit text' : 'Upravit odkaz'}</button>${mv}</div>
           <form class="linkform" hidden novalidate style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
             <div class="field"><label>Název<input class="input" name="title" maxlength="120" value="${esc(l.title)}"></label></div>
+            ${headingPicker(l)}
             ${l.type === 'note' ? '' : `<div class="field"><label>Adresa<input class="input" name="url" type="url" value="${esc(l.url)}"></label></div>`}
             <div class="field"><label>${l.type === 'note' ? 'Text' : 'Popis'}<textarea class="input textarea" name="description" rows="${l.type === 'note' ? 8 : 3}" maxlength="3000">${esc(l.description)}</textarea></label></div>
             <button class="btn small" type="submit" style="align-self:flex-start">Uložit</button>
@@ -384,6 +393,13 @@
     }
   });
   document.getElementById('list').addEventListener('change', async (e) => {
+    const hs = e.target.closest('[data-hsel]');
+    if (hs) {
+      const inp = hs.closest('form').elements.headingNew;
+      inp.hidden = hs.value !== '__new';
+      if (!inp.hidden) inp.focus();
+      return;
+    }
     const inp = e.target.closest('[data-addfile]');
     if (!inp) return;
     const fs = [...inp.files];
@@ -405,17 +421,18 @@
       catch (ex) { BC.toast(ex.message, true); b.disabled = false; }
       return;
     }
+    if ((f.classList.contains('linkform') || f.classList.contains('descform')) && !pickedHeading(f)) { BC.toast('Napiš název nového nadpisu.', true); return; }
     if (f.classList.contains('linkform')) {
       const id = f.closest('[data-link]').dataset.link;
       const b = f.querySelector('button'); b.disabled = true;
-      try { await BC.api(`admin/links/${id}`, { method: 'PATCH', body: { title: f.elements.title.value, url: f.elements.url?.value, description: f.elements.description.value } }); BC.toast('Uloženo.'); await load(); }
+      try { await BC.api(`admin/links/${id}`, { method: 'PATCH', body: { title: f.elements.title.value, url: f.elements.url?.value, description: f.elements.description.value, heading: pickedHeading(f) } }); BC.toast('Uloženo.'); await load(); }
       catch (ex) { BC.toast(ex.message, true); b.disabled = false; }
       return;
     }
     const docId = f.closest('[data-doc]').dataset.doc;
     if (f.classList.contains('descform')) {
       const b = f.querySelector('button'); b.disabled = true;
-      try { await BC.api(`admin/documents/${docId}`, { method: 'PATCH', body: { title: f.elements.title.value, description: f.elements.description.value } }); BC.toast('Uloženo.'); await load(); }
+      try { await BC.api(`admin/documents/${docId}`, { method: 'PATCH', body: { title: f.elements.title.value, description: f.elements.description.value, heading: pickedHeading(f) } }); BC.toast('Uloženo.'); await load(); }
       catch (ex) { BC.toast(ex.message, true); b.disabled = false; }
       return;
     }
