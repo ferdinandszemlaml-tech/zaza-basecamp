@@ -136,7 +136,7 @@ a.item:hover { background: #FBFAF7; }
 .chip[data-pos="zaza-barman"], .chip[data-pos="zaza-plac"] { background: var(--green-soft); color: var(--green); }
 .chip[data-pos^="little"] { background: #E6E9FB; color: #1A33CC; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.filter { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.filter { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter a { flex-shrink: 0; text-decoration: none; padding: 9px 14px; border-radius: 22px; background: #fff; border: 1px solid #E0D9CD; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .filter a.active { background: var(--sec, var(--green)); border-color: var(--sec, var(--green)); color: #fff; font-weight: 700; }
 
