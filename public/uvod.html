@@ -39,7 +39,7 @@
         <span class="item-main">
           <span class="sec" data-sec="${esc(d.section)}">${esc(BC.sectionName(d.section))}</span>
           <span class="item-title" style="font-size:16px">${esc(d.title)}</span>
-          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.fileType(v.ext)}</span>
+          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.fileType(v.ext)}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}
         </span>
         ${BC.icon('chevron', 20, 'var(--green)')}
       </a>`; }).join('')}</div>` : ''}

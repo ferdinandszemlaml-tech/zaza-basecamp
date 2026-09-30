@@ -14,6 +14,8 @@ import {
 export const config = { path: '/api/*' };
 
 const SECTION_IDS = SECTIONS.map((s) => s.id);
+const PUBLIC_IDS = SECTIONS.filter((s) => s.public).map((s) => s.id);
+const isPublicDoc = (d) => PUBLIC_IDS.includes(d.section);
 const POSITION_IDS = POSITIONS.map((p) => p.id);
 const HOUR = 3600 * 1000;
 
@@ -60,6 +62,27 @@ function positions(list) {
   if (arr.some((p) => !POSITION_IDS.includes(p))) bad('Neznámá pozice.');
   return [...new Set(arr)];
 }
+// Popis / poznámka: libovolný text včetně odstavců, nepovinné.
+function longText(v, label) {
+  const t = String(v ?? '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (t.length > 3000) bad(`${label} je příliš dlouhý (max. 3000 znaků).`);
+  return t;
+}
+function linkUrl(v) {
+  const s = String(v ?? '').trim();
+  let u;
+  try { u = new URL(s); } catch { bad('Zadej celou adresu odkazu, začínající https://'); }
+  if (!['https:', 'http:'].includes(u.protocol) || s.length > 2000) bad('Zadej celou adresu odkazu, začínající https://');
+  return u.href;
+}
+const publicLink = (l) => ({ id: l.id, section: l.section, heading: l.heading, title: l.title, url: l.url, description: l.description ?? '', order: l.order ?? null });
+// Pořadí v rámci sekce a nadpisu: nová položka jde na konec.
+async function nextOrder(section, heading) {
+  const all = [...(await loadDocs()), ...(await loadLinks())].filter((x) => x.section === section && x.heading === heading);
+  return all.reduce((m, x) => Math.max(m, x.order ?? -1), -1) + 1;
+}
+// Položky bez pořadí (nahrané před zavedením řazení) jdou první, abecedně.
+const byOrder = (a, b) => ((a.order ?? -1) - (b.order ?? -1)) || a.title.localeCompare(b.title, 'cs');
 function versionLabel(v) {
   const s = String(v ?? '').trim();
   if (!/^[0-9A-Za-z.\-]{1,15}$/.test(s)) bad('Číslo verze zadej např. jako 1.0 nebo 2.1.');
@@ -78,10 +101,12 @@ const loadUsers = () => getJSON('users', []);
 const saveUsers = (v) => setJSON('users', v);
 const loadDocs = () => getJSON('documents', []);
 const saveDocs = (v) => setJSON('documents', v);
+const loadLinks = () => getJSON('links', []);
+const saveLinks = (v) => setJSON('links', v);
 const loadReads = (uid) => getJSON(`reads/${uid}`, []);
 const saveReads = (uid, v) => setJSON(`reads/${uid}`, v);
 
-const isMandatory = (doc, user) => doc.mandatoryFor.some((p) => user.positions.includes(p));
+const isMandatory = (doc, user) => !isPublicDoc(doc) && doc.mandatoryFor.some((p) => user.positions.includes(p));
 const latest = (doc) => doc.versions[0];
 
 async function currentUser(req) {
@@ -145,12 +170,25 @@ function userStats(docs, user, reads) {
   let read = 0; let missing = 0; let optional = 0;
   const missingDocs = [];
   for (const d of docs) {
+    if (isPublicDoc(d)) continue;
     const v = latest(d);
     if (m.has(v.id)) read++;
     else if (isMandatory(d, user)) { missing++; missingDocs.push({ docId: d.id, title: d.title, section: d.section, version: v.version }); }
     else optional++;
   }
   return { read, missing, optional, missingDocs };
+}
+
+function fileResponse(v, file) {
+  const disposition = v.ext === 'pdf' ? 'inline' : 'attachment';
+  return new Response(file.data, {
+    headers: {
+      'content-type': v.mime,
+      'content-disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(v.fileName)}`,
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+    },
+  });
 }
 
 async function readFormFile(form) {
@@ -177,8 +215,8 @@ export default async (req) => {
     if (method !== 'GET' && req.headers.get('x-requested-with') !== 'basecamp') {
       throw new HttpError(403, 'Neplatný požadavek.');
     }
-    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver)_/.test(p) ? ':id' : p)).join('/')}`;
-    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver)_/.test(p));
+    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver|lnk)_/.test(p) ? ':id' : p)).join('/')}`;
+    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver|lnk)_/.test(p));
     const handler = ROUTES[route];
     if (!handler) throw new HttpError(404, 'Neznámá adresa.');
     return await handler(req, { url, id });
@@ -309,10 +347,10 @@ const ROUTES = {
     const m = readMap(reads);
     return json(200, {
       documents: docs.map((d) => ({
-        id: d.id, section: d.section, heading: d.heading, title: d.title, mandatoryFor: d.mandatoryFor,
+        id: d.id, section: d.section, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null, mandatoryFor: d.mandatoryFor,
         mandatory: isMandatory(d, u),
         versions: d.versions.map((v) => ({
-          id: v.id, version: v.version, ext: v.ext, size: v.size, uploadedAt: v.uploadedAt, readAt: m.get(v.id) ?? null,
+          id: v.id, version: v.version, note: v.note ?? '', ext: v.ext, size: v.size, uploadedAt: v.uploadedAt, readAt: m.get(v.id) ?? null,
         })),
       })),
     });
@@ -327,22 +365,44 @@ const ROUTES = {
     const file = await getFile(v.id);
     if (!file) throw new HttpError(404, 'Soubor se nenašel.');
     const reads = await loadReads(u.id);
-    if (!reads.some((r) => r.versionId === v.id)) {
+    if (!isPublicDoc(doc) && !reads.some((r) => r.versionId === v.id)) {
       reads.unshift({
         docId: doc.id, versionId: v.id, title: doc.title, section: doc.section, heading: doc.heading,
         version: v.version, mandatory: isMandatory(doc, u), at: new Date().toISOString(),
       });
       await saveReads(u.id, reads);
     }
-    const disposition = v.ext === 'pdf' ? 'inline' : 'attachment';
-    return new Response(file.data, {
-      headers: {
-        'content-type': v.mime,
-        'content-disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(v.fileName)}`,
-        'cache-control': 'private, no-store',
-        'x-content-type-options': 'nosniff',
-      },
+    return fileResponse(v, file);
+  },
+
+  // ── odkazy (bez evidence čtení) ──
+  'GET links': async (req) => {
+    await requireUser(req);
+    return json(200, { links: (await loadLinks()).map(publicLink) });
+  },
+
+  // ── veřejná sekce Nový zaměstnanec (bez přihlášení, bez evidence) ──
+  'GET public/documents': async () => {
+    const links = (await loadLinks()).filter(isPublicDoc).map(publicLink);
+    const docs = (await loadDocs()).filter(isPublicDoc)
+      .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || byOrder(a, b));
+    return json(200, {
+      section: SECTIONS.find((s) => s.public),
+      links,
+      documents: docs.map((d) => ({
+        id: d.id, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null,
+        versions: d.versions.map((v) => ({ id: v.id, version: v.version, note: v.note ?? '', ext: v.ext, uploadedAt: v.uploadedAt })),
+      })),
     });
+  },
+
+  'GET public/files/:id': async (req, { id }) => {
+    const doc = (await loadDocs()).find((d) => isPublicDoc(d) && d.versions.some((v) => v.id === id));
+    if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
+    const v = doc.versions.find((x) => x.id === id);
+    const file = await getFile(v.id);
+    if (!file) throw new HttpError(404, 'Soubor se nenašel.');
+    return fileResponse(v, file);
   },
 
   'GET my-reads': async (req) => {
@@ -359,12 +419,13 @@ const ROUTES = {
     const heading = text(form.get('heading'), { max: 60, label: 'Nadpis' });
     const title = text(form.get('title'), { max: 120, label: 'Název dokumentu' });
     const version = versionLabel(form.get('version'));
-    const mandatoryFor = positions(form.getAll('mandatoryFor'));
+    const description = longText(form.get('description'), 'Popis');
+    const mandatoryFor = PUBLIC_IDS.includes(section) ? [] : positions(form.getAll('mandatoryFor'));
     const f = await readFormFile(form);
     const vid = newId('ver');
     await setFile(vid, f.data, { fileName: f.fileName });
     const doc = {
-      id: newId('doc'), section, heading, title, mandatoryFor, createdAt: new Date().toISOString(),
+      id: newId('doc'), section, heading, title, description, mandatoryFor, order: await nextOrder(section, heading), createdAt: new Date().toISOString(),
       versions: [{ id: vid, version, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size, uploadedAt: new Date().toISOString() }],
     };
     const docs = await loadDocs();
@@ -377,6 +438,7 @@ const ROUTES = {
     await requireAdmin(req);
     const form = await formData(req);
     const version = versionLabel(form.get('version'));
+    const note = longText(form.get('note'), 'Poznámka k verzi');
     const docs = await loadDocs();
     const doc = docs.find((d) => d.id === id);
     if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
@@ -384,7 +446,72 @@ const ROUTES = {
     const f = await readFormFile(form);
     const vid = newId('ver');
     await setFile(vid, f.data, { fileName: f.fileName });
-    doc.versions.unshift({ id: vid, version, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size, uploadedAt: new Date().toISOString() });
+    doc.versions.unshift({ id: vid, version, note, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size, uploadedAt: new Date().toISOString() });
+    await saveDocs(docs);
+    return json(200, { ok: true });
+  },
+
+  'POST admin/links': async (req) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const section = String(b.section ?? '');
+    if (!SECTION_IDS.includes(section)) bad('Vyber sekci.');
+    const link = {
+      id: newId('lnk'), section, heading: text(b.heading, { max: 60, label: 'Nadpis' }),
+      title: text(b.title, { max: 120, label: 'Název' }), url: linkUrl(b.url),
+      description: longText(b.description, 'Popis'), createdAt: new Date().toISOString(),
+    };
+    link.order = await nextOrder(section, link.heading);
+    const links = await loadLinks();
+    links.push(link);
+    await saveLinks(links);
+    return json(200, { ok: true, id: link.id });
+  },
+
+  // Nové pořadí položek jednoho nadpisu (soubory i odkazy dohromady).
+  'POST admin/order': async (req) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
+    if (!ids.length || ids.length > 500 || new Set(ids).size !== ids.length) bad('Neplatné pořadí.');
+    const [docs, links] = await Promise.all([loadDocs(), loadLinks()]);
+    const items = ids.map((id) => docs.find((d) => d.id === id) ?? links.find((l) => l.id === id));
+    if (items.some((x) => !x)) bad('Některá položka mezitím zmizela. Obnov stránku.');
+    const { section, heading } = items[0];
+    if (items.some((x) => x.section !== section || x.heading !== heading)) bad('Přesouvat jde jen v rámci jednoho nadpisu.');
+    items.forEach((x, i) => { x.order = i; });
+    await Promise.all([saveDocs(docs), saveLinks(links)]);
+    return json(200, { ok: true });
+  },
+
+  'PATCH admin/links/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const links = await loadLinks();
+    const l = links.find((x) => x.id === id);
+    if (!l) throw new HttpError(404, 'Odkaz neexistuje.');
+    if (b.title !== undefined) l.title = text(b.title, { max: 120, label: 'Název' });
+    if (b.url !== undefined) l.url = linkUrl(b.url);
+    if (b.description !== undefined) l.description = longText(b.description, 'Popis');
+    await saveLinks(links);
+    return json(200, { ok: true });
+  },
+
+  'DELETE admin/links/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const links = await loadLinks();
+    if (!links.some((x) => x.id === id)) throw new HttpError(404, 'Odkaz neexistuje.');
+    await saveLinks(links.filter((x) => x.id !== id));
+    return json(200, { ok: true });
+  },
+
+  'PATCH admin/documents/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const docs = await loadDocs();
+    const doc = docs.find((d) => d.id === id);
+    if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
+    if (b.description !== undefined) doc.description = longText(b.description, 'Popis');
     await saveDocs(docs);
     return json(200, { ok: true });
   },
@@ -493,10 +620,10 @@ const ROUTES = {
   'GET admin/overview': async (req, { url }) => {
     await requireAdmin(req);
     const section = url.searchParams.get('section') || SECTION_IDS[0];
-    if (!SECTION_IDS.includes(section)) bad('Neznámá sekce.');
+    if (!SECTION_IDS.includes(section) || PUBLIC_IDS.includes(section)) bad('Neznámá sekce.');
     const [users, allDocs] = await Promise.all([loadUsers(), loadDocs()]);
     const docs = allDocs.filter((d) => d.section === section)
-      .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || a.title.localeCompare(b.title, 'cs'));
+      .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || byOrder(a, b));
     const active = users.filter((u) => u.active);
     const rows = await Promise.all(active.map(async (u) => {
       const m = readMap(await loadReads(u.id));

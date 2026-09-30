@@ -12,6 +12,10 @@ const BC = (() => {
     plus: '<path d="M12 5v14M5 12h14"/>',
     upload: '<path d="M12 20V9"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+    up: '<path d="m6 15 6-6 6 6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>',
+    external: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
     team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.6-5.5 6.5-5.5s5.5 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>',
     phone: '<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>',
   };
@@ -49,6 +53,36 @@ const BC = (() => {
   const fmtShort = (iso) => { const d = new Date(iso); return `${d.getDate()}. ${d.getMonth() + 1}.`; };
   const fileType = (ext) => ({ pdf: 'PDF', doc: 'Word', docx: 'Word', xls: 'Excel', xlsx: 'Excel' }[ext] ?? ext.toUpperCase());
   const mark = (status) => `<span class="mark ${status}" aria-label="${{ ok: 'přečteno', no: 'povinné, nepřečtené', na: 'nepovinné' }[status]}">${{ ok: '✓', no: '✗', na: '–' }[status]}</span>`;
+  // Odkaz: druh služby podle adresy (jen pro popisek na kartě).
+  function linkKind(url) {
+    let u; try { u = new URL(url); } catch { return ''; }
+    const h = u.hostname.replace(/^www\./, '');
+    if (h === 'docs.google.com') {
+      if (u.pathname.startsWith('/spreadsheets')) return 'Google Tabulka';
+      if (u.pathname.startsWith('/document')) return 'Google Dokument';
+      if (u.pathname.startsWith('/forms')) return 'Google Formulář';
+      if (u.pathname.startsWith('/presentation')) return 'Google Prezentace';
+      return 'Google Docs';
+    }
+    if (h === 'forms.gle') return 'Google Formulář';
+    if (h === 'drive.google.com') return 'Google Disk';
+    if (h === 'onedrive.live.com' || h === '1drv.ms') return 'OneDrive';
+    if (h.endsWith('sharepoint.com')) return 'OneDrive / SharePoint';
+    if (h === 'zaza-objednavky.netlify.app') return 'Objednávky ZaZa';
+    return h;
+  }
+  const linkCard = (l) => `<a class="card link-card" data-sec="${esc(l.section)}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+      <span class="link-row"><span class="link-ico">${icon('link', 22)}</span>
+        <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span><span class="item-sub">Odkaz · ${esc(linkKind(l.url))}</span></span>
+        <span class="link-go" aria-hidden="true">${icon('external', 20)}</span></span>
+      ${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
+    </a>`;
+  const byOrder = (a, b) => ((a.order ?? -1) - (b.order ?? -1)) || a.title.localeCompare(b.title, 'cs');
+  // Soubory a odkazy jednoho nadpisu v nastaveném pořadí.
+  const mergeItems = (docs, links, h) => [
+    ...docs.filter((d) => d.heading === h).map((d) => ({ ...d, kind: 'doc' })),
+    ...links.filter((l) => l.heading === h).map((l) => ({ ...l, kind: 'link' })),
+  ].sort(byOrder);
   const telHref = (p) => `tel:${String(p).replace(/[^0-9+]/g, '')}`;
   const posChips = (list) => list.map((p) => `<span class="chip" data-pos="${esc(p)}">${esc(positionName(p))}</span>`).join('');
 
@@ -127,6 +161,6 @@ const BC = (() => {
 
   return {
     api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, fileLink, adminTabs, posChips,
-    trackOpens, fail, telHref, sectionName, positionName, get meta() { return meta; },
+    trackOpens, fail, telHref, linkKind, linkCard, byOrder, mergeItems, sectionName, positionName, get meta() { return meta; },
   };
 })();

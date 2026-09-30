@@ -15,15 +15,16 @@
 <script>
 (async () => {
   await BC.init({ active: 'sekce' });
-  const { documents } = await BC.api('documents');
+  const [{ documents }, { links: allLinks }] = await Promise.all([BC.api('documents'), BC.api('links')]);
   const { esc } = BC;
-  const sections = BC.meta.sections;
+  const sections = BC.meta.sections.filter((s) => !s.public);
   const requested = new URLSearchParams(location.search).get('s');
   const current = sections.some((s) => s.id === requested) ? requested : sections[0].id;
 
   const docs = documents.filter((d) => d.section === current)
     .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || a.title.localeCompare(b.title, 'cs'));
-  const headings = [...new Set(docs.map((d) => d.heading))];
+  const links = allLinks.filter((l) => l.section === current).sort((a, b) => a.title.localeCompare(b.title, 'cs'));
+  const headings = [...new Set([...docs, ...links].map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
 
   function versionRow(d, v, i) {
     let status, text;
@@ -33,7 +34,7 @@
     return `<div class="item${status === 'no' ? ' new' : ''}" data-row>
       ${BC.mark(status)}
       <span class="item-main"><span class="item-title" style="${i ? 'font-weight:600;color:var(--ink-2)' : ''}">Verze ${esc(v.version)}</span>
-      <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.fileType(v.ext)} · ${text}</span></span>
+      <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.fileType(v.ext)} · ${text}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}</span>
       ${BC.fileLink(v, i === 0 ? 'btn small' : 'btn small soft')}
     </div>`;
   }
@@ -41,11 +42,12 @@
   document.getElementById('main').innerHTML = `
     <nav class="filter" aria-label="Sekce">${sections.map((s) => `<a href="?s=${s.id}" data-sec="${s.id}" class="${s.id === current ? 'active' : ''}"${s.id === current ? ' aria-current="page"' : ''}>${esc(s.name)}</a>`).join('')}</nav>
     <h1>${esc(BC.sectionName(current))}</h1>
-    ${docs.length ? headings.map((h) => `
+    ${docs.length || links.length ? headings.map((h) => `
       <div class="label">${esc(h)}</div>
-      ${docs.filter((d) => d.heading === h).map((d) => `
+      ${BC.mergeItems(docs, links, h).map((d) => d.kind === 'link' ? BC.linkCard(d) : `
         <div class="card" data-sec="${esc(d.section)}">
           <div class="doc-head">${BC.icon('file', 22, 'var(--sec)')}<span>${esc(d.title)}</span></div>
+          ${d.description ? `<div class="desc">${esc(d.description)}</div>` : ''}
           ${d.versions.map((v, i) => versionRow(d, v, i)).join('')}
         </div>`).join('')}`).join('')
       : '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'}

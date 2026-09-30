@@ -26,7 +26,7 @@
 (async () => {
   await BC.init({ active: 'admin', admin: true });
   const { esc } = BC;
-  const sections = BC.meta.sections;
+  const sections = BC.meta.sections.filter((s) => !s.public);
   const requested = new URLSearchParams(location.search).get('s');
   const current = sections.some((s) => s.id === requested) ? requested : sections[0].id;
   const data = await BC.api(`admin/overview?section=${current}`);

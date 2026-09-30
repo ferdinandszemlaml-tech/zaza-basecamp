@@ -6,6 +6,8 @@ export const SECTIONS = [
   { id: 'zaza-kuchyne', name: 'ZaZa Kuchyně' },
   { id: 'little-bar', name: 'Little Bar' },
   { id: 'little-kuchyne', name: 'Little Kuchyně' },
+  // Veřejná sekce bez přihlášení a bez evidence čtení (dokumenty před zkušební směnou).
+  { id: 'novy-zamestnanec', name: 'Nový zaměstnanec', public: true },
 ];
 
 export const POSITIONS = [
@@ -23,6 +25,7 @@ export const DEFAULT_MANDATORY = {
   'zaza-kuchyne': ['zaza-kuchyn'],
   'little-bar': ['little-bar'],
   'little-kuchyne': ['little-kuchyn'],
+  'novy-zamestnanec': [],
 };
 
 export const FILE_TYPES = {
