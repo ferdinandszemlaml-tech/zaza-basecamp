@@ -42,8 +42,8 @@
           ${d.description ? `<div class="desc">${esc(d.description)}</div>` : ''}
           ${d.versions.map((v, i) => `<div class="item">
             <span class="item-main"><span class="item-title" style="${i ? 'font-weight:600;color:var(--ink-2)' : ''}">Verze ${esc(v.version)}${i ? '' : ' <span class="muted" style="font-weight:600;font-size:13px">· aktuální</span>'}</span>
-            <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.fileType(v.ext)}${i ? ' · starší verze' : ''}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}</span>
-            ${link(v, i === 0 ? 'btn small' : 'btn small soft')}
+            <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.filesLabel(v)}${i ? ' · starší verze' : ''}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}${BC.filesList(v, (f) => link(f, 'btn small soft'))}</span>
+            ${v.files.length > 1 ? '' : link(v.files[0], i === 0 ? 'btn small' : 'btn small soft')}
           </div>`).join('')}
         </div>`).join('')}`).join('')
       : '<div class="card empty">Zatím tu nejsou žádné dokumenty.</div>'}

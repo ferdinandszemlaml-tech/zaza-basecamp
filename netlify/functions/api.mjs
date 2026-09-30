@@ -75,7 +75,7 @@ function linkUrl(v) {
   if (!['https:', 'http:'].includes(u.protocol) || s.length > 2000) bad('Zadej celou adresu odkazu, začínající https://');
   return u.href;
 }
-const publicLink = (l) => ({ id: l.id, section: l.section, heading: l.heading, title: l.title, url: l.url, description: l.description ?? '', order: l.order ?? null });
+const publicLink = (l) => ({ id: l.id, type: l.type ?? 'link', section: l.section, heading: l.heading, title: l.title, url: l.url ?? '', description: l.description ?? '', order: l.order ?? null });
 // Pořadí v rámci sekce a nadpisu: nová položka jde na konec.
 async function nextOrder(section, heading) {
   const all = [...(await loadDocs()), ...(await loadLinks())].filter((x) => x.section === section && x.heading === heading);
@@ -179,6 +179,18 @@ function userStats(docs, user, reads) {
   return { read, missing, optional, missingDocs };
 }
 
+// Soubory verze. Starší verze mají jediný soubor uložený přímo ve verzi (klíč = id verze).
+const filesOf = (v) => v.files ?? [{ id: v.id, fileName: v.fileName, ext: v.ext, mime: v.mime, size: v.size }];
+const publicFile = (f) => ({ id: f.id, name: f.fileName, ext: f.ext, size: f.size });
+function findFile(docs, fileId) {
+  for (const d of docs) for (const v of d.versions) {
+    const f = filesOf(v).find((x) => x.id === fileId);
+    if (f) return { doc: d, v, f };
+  }
+  return null;
+}
+const fileEntry = (id, f) => ({ id, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size });
+
 function fileResponse(v, file) {
   const disposition = v.ext === 'pdf' ? 'inline' : 'attachment';
   return new Response(file.data, {
@@ -215,8 +227,8 @@ export default async (req) => {
     if (method !== 'GET' && req.headers.get('x-requested-with') !== 'basecamp') {
       throw new HttpError(403, 'Neplatný požadavek.');
     }
-    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver|lnk)_/.test(p) ? ':id' : p)).join('/')}`;
-    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver|lnk)_/.test(p));
+    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver|lnk|fil)_/.test(p) ? ':id' : p)).join('/')}`;
+    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver|lnk|fil)_/.test(p));
     const handler = ROUTES[route];
     if (!handler) throw new HttpError(404, 'Neznámá adresa.');
     return await handler(req, { url, id });
@@ -350,7 +362,7 @@ const ROUTES = {
         id: d.id, section: d.section, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null, mandatoryFor: d.mandatoryFor,
         mandatory: isMandatory(d, u),
         versions: d.versions.map((v) => ({
-          id: v.id, version: v.version, note: v.note ?? '', ext: v.ext, size: v.size, uploadedAt: v.uploadedAt, readAt: m.get(v.id) ?? null,
+          id: v.id, version: v.version, note: v.note ?? '', ext: filesOf(v)[0].ext, files: filesOf(v).map(publicFile), uploadedAt: v.uploadedAt, readAt: m.get(v.id) ?? null,
         })),
       })),
     });
@@ -358,11 +370,10 @@ const ROUTES = {
 
   'GET files/:id': async (req, { id }) => {
     const u = await requireUser(req);
-    const docs = await loadDocs();
-    const doc = docs.find((d) => d.versions.some((v) => v.id === id));
-    if (!doc) throw new HttpError(404, 'Dokument už neexistuje.');
-    const v = doc.versions.find((x) => x.id === id);
-    const file = await getFile(v.id);
+    const found = findFile(await loadDocs(), id);
+    if (!found) throw new HttpError(404, 'Dokument už neexistuje.');
+    const { doc, v, f } = found;
+    const file = await getFile(f.id);
     if (!file) throw new HttpError(404, 'Soubor se nenašel.');
     const reads = await loadReads(u.id);
     if (!isPublicDoc(doc) && !reads.some((r) => r.versionId === v.id)) {
@@ -372,7 +383,7 @@ const ROUTES = {
       });
       await saveReads(u.id, reads);
     }
-    return fileResponse(v, file);
+    return fileResponse(f, file);
   },
 
   // ── odkazy (bez evidence čtení) ──
@@ -391,18 +402,17 @@ const ROUTES = {
       links,
       documents: docs.map((d) => ({
         id: d.id, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null,
-        versions: d.versions.map((v) => ({ id: v.id, version: v.version, note: v.note ?? '', ext: v.ext, uploadedAt: v.uploadedAt })),
+        versions: d.versions.map((v) => ({ id: v.id, version: v.version, note: v.note ?? '', ext: filesOf(v)[0].ext, files: filesOf(v).map(publicFile), uploadedAt: v.uploadedAt })),
       })),
     });
   },
 
   'GET public/files/:id': async (req, { id }) => {
-    const doc = (await loadDocs()).find((d) => isPublicDoc(d) && d.versions.some((v) => v.id === id));
-    if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
-    const v = doc.versions.find((x) => x.id === id);
-    const file = await getFile(v.id);
+    const found = findFile(await loadDocs(), id);
+    if (!found || !isPublicDoc(found.doc)) throw new HttpError(404, 'Dokument neexistuje.');
+    const file = await getFile(found.f.id);
     if (!file) throw new HttpError(404, 'Soubor se nenašel.');
-    return fileResponse(v, file);
+    return fileResponse(found.f, file);
   },
 
   'GET my-reads': async (req) => {
@@ -426,12 +436,12 @@ const ROUTES = {
     await setFile(vid, f.data, { fileName: f.fileName });
     const doc = {
       id: newId('doc'), section, heading, title, description, mandatoryFor, order: await nextOrder(section, heading), createdAt: new Date().toISOString(),
-      versions: [{ id: vid, version, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size, uploadedAt: new Date().toISOString() }],
+      versions: [{ id: vid, version, note: longText(form.get('note'), 'Popisek verze'), files: [fileEntry(vid, f)], uploadedAt: new Date().toISOString() }],
     };
     const docs = await loadDocs();
     docs.push(doc);
     await saveDocs(docs);
-    return json(200, { ok: true, id: doc.id });
+    return json(200, { ok: true, id: doc.id, versionId: vid });
   },
 
   'POST admin/documents/:id/versions': async (req, { id }) => {
@@ -446,9 +456,9 @@ const ROUTES = {
     const f = await readFormFile(form);
     const vid = newId('ver');
     await setFile(vid, f.data, { fileName: f.fileName });
-    doc.versions.unshift({ id: vid, version, note, fileName: f.fileName, ext: f.ext, mime: f.mime, size: f.size, uploadedAt: new Date().toISOString() });
+    doc.versions.unshift({ id: vid, version, note, files: [fileEntry(vid, f)], uploadedAt: new Date().toISOString() });
     await saveDocs(docs);
-    return json(200, { ok: true });
+    return json(200, { ok: true, versionId: vid });
   },
 
   'POST admin/links': async (req) => {
@@ -456,11 +466,13 @@ const ROUTES = {
     const b = await body(req);
     const section = String(b.section ?? '');
     if (!SECTION_IDS.includes(section)) bad('Vyber sekci.');
+    const type = b.type === 'note' ? 'note' : 'link';
     const link = {
-      id: newId('lnk'), section, heading: text(b.heading, { max: 60, label: 'Nadpis' }),
-      title: text(b.title, { max: 120, label: 'Název' }), url: linkUrl(b.url),
-      description: longText(b.description, 'Popis'), createdAt: new Date().toISOString(),
+      id: newId('lnk'), type, section, heading: text(b.heading, { max: 60, label: 'Nadpis' }),
+      title: text(b.title, { max: 120, label: 'Název' }), url: type === 'link' ? linkUrl(b.url) : '',
+      description: longText(b.description, type === 'note' ? 'Text' : 'Popis'), createdAt: new Date().toISOString(),
     };
+    if (type === 'note' && !link.description) bad('Vyplň text.');
     link.order = await nextOrder(section, link.heading);
     const links = await loadLinks();
     links.push(link);
@@ -484,6 +496,26 @@ const ROUTES = {
     return json(200, { ok: true });
   },
 
+  // Přejmenování nadpisu v jedné sekci (u souborů, odkazů i textů). Existující nadpis = sloučení.
+  'POST admin/headings/rename': async (req) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const section = String(b.section ?? '');
+    if (!SECTION_IDS.includes(section)) bad('Neznámá sekce.');
+    const from = String(b.from ?? '');
+    const to = text(b.to, { max: 60, label: 'Nadpis' });
+    const [docs, links] = await Promise.all([loadDocs(), loadLinks()]);
+    const all = [...docs, ...links].filter((x) => x.section === section);
+    const moving = all.filter((x) => x.heading === from).sort(byOrder);
+    if (!moving.length) throw new HttpError(404, 'Nadpis neexistuje.');
+    if (to !== from) {
+      const start = all.filter((x) => x.heading === to).reduce((m, x) => Math.max(m, x.order ?? -1), -1) + 1;
+      moving.forEach((x, i) => { x.heading = to; x.order = start + i; });
+      await Promise.all([saveDocs(docs), saveLinks(links)]);
+    }
+    return json(200, { ok: true, merged: all.some((x) => x.heading === to && !moving.includes(x)) });
+  },
+
   'PATCH admin/links/:id': async (req, { id }) => {
     await requireAdmin(req);
     const b = await body(req);
@@ -491,8 +523,11 @@ const ROUTES = {
     const l = links.find((x) => x.id === id);
     if (!l) throw new HttpError(404, 'Odkaz neexistuje.');
     if (b.title !== undefined) l.title = text(b.title, { max: 120, label: 'Název' });
-    if (b.url !== undefined) l.url = linkUrl(b.url);
-    if (b.description !== undefined) l.description = longText(b.description, 'Popis');
+    if (b.url !== undefined && (l.type ?? 'link') === 'link') l.url = linkUrl(b.url);
+    if (b.description !== undefined) {
+      l.description = longText(b.description, 'Popis');
+      if (l.type === 'note' && !l.description) bad('Vyplň text.');
+    }
     await saveLinks(links);
     return json(200, { ok: true });
   },
@@ -511,8 +546,58 @@ const ROUTES = {
     const docs = await loadDocs();
     const doc = docs.find((d) => d.id === id);
     if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
+    if (b.title !== undefined) doc.title = text(b.title, { max: 120, label: 'Název' });
     if (b.description !== undefined) doc.description = longText(b.description, 'Popis');
     await saveDocs(docs);
+    return json(200, { ok: true });
+  },
+
+  // Další soubor ke stávající verzi (každý soubor zvlášť kvůli limitu velikosti požadavku).
+  'POST admin/versions/:id/files': async (req, { id }) => {
+    await requireAdmin(req);
+    const form = await formData(req);
+    const docs = await loadDocs();
+    const doc = docs.find((d) => d.versions.some((v) => v.id === id));
+    if (!doc) throw new HttpError(404, 'Verze neexistuje.');
+    const v = doc.versions.find((x) => x.id === id);
+    const files = filesOf(v);
+    if (files.length >= 20) bad('Jedna verze může mít nejvýš 20 souborů.');
+    const f = await readFormFile(form);
+    const fid = newId('fil');
+    await setFile(fid, f.data, { fileName: f.fileName });
+    v.files = [...files, fileEntry(fid, f)];
+    await saveDocs(docs);
+    return json(200, { ok: true, id: fid });
+  },
+
+  // Úprava čísla a popisku verze.
+  'PATCH admin/versions/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const docs = await loadDocs();
+    const doc = docs.find((d) => d.versions.some((v) => v.id === id));
+    if (!doc) throw new HttpError(404, 'Verze neexistuje.');
+    const v = doc.versions.find((x) => x.id === id);
+    if (b.version !== undefined) {
+      const label = versionLabel(b.version);
+      if (doc.versions.some((x) => x.id !== id && x.version === label)) bad('Tahle verze už existuje.');
+      v.version = label;
+    }
+    if (b.note !== undefined) v.note = longText(b.note, 'Popisek verze');
+    await saveDocs(docs);
+    return json(200, { ok: true });
+  },
+
+  'DELETE admin/files/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const docs = await loadDocs();
+    const found = findFile(docs, id);
+    if (!found) throw new HttpError(404, 'Soubor neexistuje.');
+    const files = filesOf(found.v);
+    if (files.length === 1) bad('Je to jediný soubor této verze. Smaž rovnou celou verzi.');
+    found.v.files = files.filter((x) => x.id !== id);
+    await saveDocs(docs);
+    await deleteFile(id);
     return json(200, { ok: true });
   },
 
@@ -521,9 +606,10 @@ const ROUTES = {
     const docs = await loadDocs();
     const doc = docs.find((d) => d.versions.some((v) => v.id === id));
     if (!doc) throw new HttpError(404, 'Verze neexistuje.');
+    const gone = doc.versions.find((v) => v.id === id);
     doc.versions = doc.versions.filter((v) => v.id !== id);
     await saveDocs(doc.versions.length ? docs : docs.filter((d) => d.id !== doc.id));
-    await deleteFile(id);
+    await Promise.all(filesOf(gone).map((f) => deleteFile(f.id)));
     // Záznamy o přečtení zůstávají v profilech zaměstnanců jako doklad.
     return json(200, { ok: true, documentRemoved: doc.versions.length === 0 });
   },

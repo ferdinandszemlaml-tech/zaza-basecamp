@@ -8,6 +8,13 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
+<style>
+.summary { display: flex; align-items: center; gap: 14px; }
+.summary .progress { flex-grow: 1; }
+.sec-head { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; }
+.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--coral); } 100% { box-shadow: var(--shadow); } }
+</style>
 </head>
 <body>
 <main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
@@ -15,39 +22,96 @@
 <script>
 (async () => {
   const me = await BC.init({ active: 'uvod' });
-  const { documents } = await BC.api('documents');
+  const [{ documents }, { links: allLinks }] = await Promise.all([BC.api('documents'), BC.api('links')]);
   const { esc } = BC;
+  const sections = BC.meta.sections.filter((s) => !s.public);
+  const params = new URLSearchParams(location.search);
+  // Výchozí sekce: z adresy, jinak první sekce, kde má zaměstnanec něco povinného.
   const mandatory = documents.filter((d) => d.mandatory);
+  const firstOwn = sections.find((s) => mandatory.some((d) => d.section === s.id && d.section !== 'spolecne'));
+  let current = sections.some((s) => s.id === params.get('s')) ? params.get('s') : (firstOwn ?? sections[0]).id;
+
   const done = mandatory.filter((d) => d.versions[0].readAt).length;
   const unread = mandatory.filter((d) => !d.versions[0].readAt);
-  const recent = documents.flatMap((d) => d.versions.filter((v) => v.readAt).map((v) => ({ d, v })))
-    .sort((a, b) => b.v.readAt.localeCompare(a.v.readAt)).slice(0, 3);
   const pct = mandatory.length ? Math.round((done / mandatory.length) * 100) : 100;
   const n = unread.length;
   const countText = n === 0 ? 'Všechno povinné máš přečtené.' : `Máš <strong>${n} ${n === 1 ? 'dokument' : n < 5 ? 'dokumenty' : 'dokumentů'}</strong> k přečtení.`;
 
+  function versionRow(d, v, i) {
+    let status, text;
+    if (v.readAt) { status = 'ok'; text = `Přečteno ${BC.fmtDate(v.readAt)}`; }
+    else if (i === 0 && d.mandatory) { status = 'no'; text = 'Nové'; }
+    else { status = 'na'; text = i === 0 ? 'Nepovinné' : 'Starší verze'; }
+    return `<div class="item${status === 'no' ? ' new' : ''}" data-row>
+      ${BC.mark(status)}
+      <span class="item-main"><span class="item-title" style="${i ? 'font-weight:600;color:var(--ink-2)' : ''}">Verze ${esc(v.version)}</span>
+      <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.filesLabel(v)} · ${text}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}${BC.filesList(v, (f) => BC.fileLink(f, 'btn small soft'))}</span>
+      ${v.files.length > 1 ? '' : BC.fileLink(v.files[0], i === 0 ? 'btn small' : 'btn small soft')}
+    </div>`;
+  }
+
+  function renderSection() {
+    const docs = documents.filter((d) => d.section === current);
+    const links = allLinks.filter((l) => l.section === current);
+    const headings = [...new Set([...docs, ...links].map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+    document.querySelectorAll('#secFilter a').forEach((a) => { a.classList.toggle('active', a.dataset.s === current); a.toggleAttribute('aria-current', a.dataset.s === current); });
+    document.getElementById('secBody').innerHTML = docs.length || links.length ? headings.map((h) => `
+      <div class="label">${esc(h)}</div>
+      ${BC.mergeItems(docs, links, h).map((d) => d.kind === 'link' ? BC.linkCard(d) : `
+        <div class="card" id="doc-${esc(d.id)}" data-sec="${esc(d.section)}">
+          <div class="doc-head">${BC.icon('file', 22, 'var(--sec)')}<span>${esc(d.title)}</span></div>
+          ${d.description ? `<div class="desc">${esc(d.description)}</div>` : ''}
+          ${d.versions.map((v, i) => versionRow(d, v, i)).join('')}
+        </div>`).join('')}`).join('')
+      : '<div class="card empty">V této sekci zatím nic není.</div>';
+    const u = new URL(location.href);
+    u.searchParams.set('s', current);
+    history.replaceState(null, '', u.pathname + u.search);
+  }
+
   document.getElementById('main').innerHTML = `
     <div class="stack" style="gap:6px"><h1>Ahoj, ${esc(BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p></div>
-    ${mandatory.length ? `<div class="card card-pad stack">
-      <div class="row small" style="font-weight:600"><span class="muted">Povinné dokumenty</span><span class="spacer"></span><span style="color:var(--green)">${done} z ${mandatory.length} přečteno</span></div>
+    ${mandatory.length ? `<div class="card card-pad summary">
       <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Přečteno povinných dokumentů"><div style="width:${pct}%"></div></div>
+      <span class="small" style="font-weight:700;color:var(--green);white-space:nowrap">${done} z ${mandatory.length} povinných</span>
     </div>` : ''}
     ${n ? `<div class="label">K přečtení</div>
-    <div class="stack">${unread.map((d) => { const v = d.versions[0]; return `
-      <a class="card item new" data-row href="/api/files/${esc(v.id)}" target="_blank" rel="noopener" data-open="${esc(v.id)}" style="border-top:0">
+    <div class="stack">${unread.map((d) => { const v = d.versions[0]; const multi = v.files.length > 1; return `
+      <a class="card item new" data-row ${multi ? `href="#doc-${esc(d.id)}" data-goto="${esc(d.id)}" data-sec-id="${esc(d.section)}"` : `href="/api/files/${esc(v.files[0].id)}" target="_blank" rel="noopener" data-open="${esc(v.files[0].id)}"`} style="border-top:0">
         ${BC.mark('no')}
         <span class="item-main">
           <span class="sec" data-sec="${esc(d.section)}">${esc(BC.sectionName(d.section))}</span>
           <span class="item-title" style="font-size:16px">${esc(d.title)}</span>
-          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.fileType(v.ext)}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}
+          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.filesLabel(v)}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}
         </span>
         ${BC.icon('chevron', 20, 'var(--green)')}
       </a>`; }).join('')}</div>` : ''}
-    <div class="label">Naposledy přečteno</div>
-    ${recent.length ? `<div class="card">${recent.map(({ d, v }) => `
-      <div class="item">${BC.mark('ok')}<span class="item-main"><span class="item-title">${esc(d.title)}</span><span class="item-sub">${esc(BC.sectionName(d.section))} · verze ${esc(v.version)}</span></span><span class="small muted">${BC.fmtDate(v.readAt)}</span></div>`).join('')}</div>`
-      : '<div class="card empty">Zatím jsi nic neotevřel/a. Dokumenty najdeš v Sekcích.</div>'}
+    <div class="sec-head"><h2 id="secTitle">Dokumenty</h2></div>
+    <nav class="filter" aria-label="Sekce" id="secFilter">${sections.map((s) => `<a href="?s=${s.id}" data-s="${s.id}" data-sec="${s.id}">${esc(s.name)}</a>`).join('')}</nav>
+    <div id="secBody" class="stack" style="gap:12px"></div>
   `;
+
+  renderSection();
+  document.querySelector('#secFilter .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  document.getElementById('secFilter').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-s]');
+    if (!a) return;
+    e.preventDefault();
+    current = a.dataset.s;
+    renderSection();
+  });
+  // Dokument s více soubory z „K přečtení“: přepne sekci a sjede na něj.
+  document.getElementById('main').addEventListener('click', (e) => {
+    const g = e.target.closest('[data-goto]');
+    if (!g) return;
+    e.preventDefault();
+    current = g.dataset.secId;
+    renderSection();
+    const card = document.getElementById(`doc-${g.dataset.goto}`);
+    card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card?.classList.add('flash');
+  });
+  if (location.hash.startsWith('#doc-')) document.querySelector(location.hash)?.scrollIntoView({ block: 'center' });
   BC.trackOpens();
 })().catch(BC.fail);
 </script>

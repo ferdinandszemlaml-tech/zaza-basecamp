@@ -13,6 +13,8 @@ const BC = (() => {
     upload: '<path d="M12 20V9"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     up: '<path d="m6 15 6-6 6 6"/>',
+    note: '<path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>',
     external: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
@@ -71,12 +73,23 @@ const BC = (() => {
     if (h === 'zaza-objednavky.netlify.app') return 'Objednávky ZaZa';
     return h;
   }
-  const linkCard = (l) => `<a class="card link-card" data-sec="${esc(l.section)}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+  const noteCard = (l) => `<div class="card" data-sec="${esc(l.section)}">
+      <span class="link-row"><span class="link-ico">${icon('note', 22)}</span>
+        <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span></span></span>
+      <div class="desc" style="padding-left:68px">${esc(l.description)}</div>
+    </div>`;
+  const linkCard = (l) => l.type === 'note' ? noteCard(l) : `<a class="card link-card" data-sec="${esc(l.section)}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
       <span class="link-row"><span class="link-ico">${icon('link', 22)}</span>
         <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span><span class="item-sub">Odkaz · ${esc(linkKind(l.url))}</span></span>
         <span class="link-go" aria-hidden="true">${icon('external', 20)}</span></span>
       ${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
     </a>`;
+  const filesLabel = (v) => {
+    const n = v.files?.length ?? 1;
+    return n > 1 ? `${n} ${n < 5 ? 'soubory' : 'souborů'}` : fileType(v.files?.[0]?.ext ?? v.ext);
+  };
+  // Seznam souborů verze (jen když jich je víc než jeden).
+  const filesList = (v, linkFn) => (v.files?.length > 1 ? `<span class="flist">${v.files.map((f) => `<span class="frow"><span class="ftag">${esc(fileType(f.ext))}</span><span class="fname">${esc(f.name)}</span>${linkFn(f)}</span>`).join('')}</span>` : '');
   const byOrder = (a, b) => ((a.order ?? -1) - (b.order ?? -1)) || a.title.localeCompare(b.title, 'cs');
   // Soubory a odkazy jednoho nadpisu v nastaveném pořadí.
   const mergeItems = (docs, links, h) => [
@@ -100,7 +113,6 @@ const BC = (() => {
     const admin = me.user.role === 'admin';
     const items = [
       { id: 'uvod', href: '/uvod.html', label: 'Úvod', icon: 'home', badge: me.unread },
-      { id: 'sekce', href: '/sekce.html', label: 'Sekce', icon: 'folder' },
       { id: 'tym', href: '/tym.html', label: 'Tým', icon: 'team' },
       { id: 'profil', href: '/profil.html', label: 'Profil', icon: 'user' },
       ...(admin ? [{ id: 'admin', href: '/admin-dokumenty.html', label: 'Admin', icon: 'shield' }] : []),
@@ -161,6 +173,6 @@ const BC = (() => {
 
   return {
     api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, fileLink, adminTabs, posChips,
-    trackOpens, fail, telHref, linkKind, linkCard, byOrder, mergeItems, sectionName, positionName, get meta() { return meta; },
+    trackOpens, fail, filesLabel, filesList, telHref, linkKind, linkCard, byOrder, mergeItems, sectionName, positionName, get meta() { return meta; },
   };
 })();
