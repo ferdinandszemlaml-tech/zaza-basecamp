@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zaměstnanci · Směny · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc, icon } = BC;
+  const month = SM.currentMonth();
+  let D = await SM.load(month);
+  const cfg = D.config;
+  const main = document.getElementById('main');
+  let selected = new URLSearchParams(location.search).get('id');
+  let filter = 'all';
+  let query = '';
+
+  const posShort = (s) => {
+    const list = Object.entries(s.positions ?? {}).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${SM.posLabel(cfg, k).replace(' · ', ' ')}${v > 1 ? ` (${v})` : ''}`);
+    return list.length ? list.join(' · ') : 'Bez pozic';
+  };
+  const visible = () => D.staff.filter((s) => (filter === 'all' || (filter === 'none' ? !SM.hasPositions(s) : SM.hasPositions(s)))
+    && (!query || E.fold(s.name).includes(E.fold(query)) || E.fold(s.nick).includes(E.fold(query))));
+
+  function listHtml() {
+    const items = visible();
+    return `<div class="card-pad stack" style="gap:12px;border-bottom:1px solid var(--line-2)">
+        <h1 style="font-size:24px">Zaměstnanci</h1>
+        <label for="q" class="sr-only">Hledat</label>
+        <input class="input" id="q" type="search" placeholder="Hledat jméno nebo přezdívku" value="${esc(query)}" style="height:44px">
+        <nav class="segmented" aria-label="Filtr">${[['all', 'Všichni'], ['set', 'S pozicemi'], ['none', 'Bez pozic']].map(([id, l]) => `<button type="button" data-filter="${id}" class="${id === filter ? 'active' : ''}" aria-pressed="${id === filter}">${l}</button>`).join('')}</nav>
+        <span class="hint">Lidé s účtem se berou z BaseCampu (zakládá je admin). Kdo účet nemá (např. brigádník v kuchyni), přidáš tlačítkem dole.</span>
+      </div>
+      <div>${items.map((s) => `<a class="item ${s.id === selected ? 'sel' : ''}" href="?id=${esc(s.id)}" data-pick="${esc(s.id)}">
+          <span class="avatar ${s.active ? '' : 'off'}" style="width:38px;height:38px;font-size:13px">${esc(BC.initials(s.name))}</span>
+          <span class="item-main"><span class="item-title">${esc(s.name)} ${s.nick ? `<span class="sm-chip">${esc(s.nick)}</span>` : ''}</span><span class="item-sub">${esc(posShort(s))}</span></span>
+          ${SM.hasPositions(s) ? SM.contractChip(s.contract) : '<span class="pill no" style="font-size:11px">nenastaveno</span>'}</a>`).join('') || '<div class="empty">Nikoho takového nenacházím.</div>'}</div>
+      <div class="card-pad"><button type="button" class="btn small outline block" id="add">${icon('plus', 16)}Přidat člověka bez účtu</button></div>`;
+  }
+
+  const seg = (name, value, options) => `<span class="sm-seg">${options.map(([v, l]) => `<label><input type="radio" name="${name}" value="${esc(v)}" ${String(v) === String(value) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</span>`;
+  const num = (name, label, value) => `<label>${label}<input type="number" min="0" step="1" inputmode="numeric" name="${name}" value="${value ?? ''}"></label>`;
+
+  function formHtml(s) {
+    if (!s) return '<div class="empty">Vyber zaměstnance vlevo.</div>';
+    const venueBox = (venue, title, cls) => {
+      const ps = cfg.positions.filter((p) => p.venue === venue && p.group === title);
+      return ps.length ? `<div class="sm-box"><h3 class="${cls}">${esc(title)}</h3>
+        ${ps.map((p) => `<div class="sm-prio"><span>${esc(p.name)}</span>${seg(`pos:${p.key}`, s.positions?.[p.key] ?? '', [['', '–'], [1, '1'], [2, '2'], [3, '3']])}</div>
+        ${p.key.endsWith('-pizzar') ? `<label class="row small" style="gap:8px;font-weight:600" data-rot="${venue}"><input type="checkbox" name="rot:${venue}" ${s.rot?.[venue] ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--green)">Jede rotaci L / S</label>${cfg.rotation[venue].enabled ? '' : '<span class="hint" style="margin-top:-6px">Rotace je v tomto provozu teď vypnutá (zapíná se v záložce Rotace pizzařů).</span>'}` : ''}`).join('')}</div>` : '';
+    };
+    return `<form id="f" class="stack" style="gap:20px" novalidate>
+      <div class="row" style="flex-wrap:wrap">
+        <span class="avatar" style="width:52px;height:52px;font-size:17px">${esc(BC.initials(s.name))}</span>
+        <div class="item-main">${s.account ? `<h2 style="font-size:24px">${esc(s.name)}</h2><span class="small muted">Jméno se bere z účtu v BaseCampu</span>`
+          : `<label for="nm" class="small" style="font-weight:600">Jméno (bez účtu v BaseCampu)</label><input class="input" id="nm" name="name" value="${esc(s.name)}" style="height:44px;max-width:360px">`}</div>
+        <button type="submit" class="btn small">Uložit změny</button>
+      </div>
+      <div class="sm-grid3">
+        <div class="field"><label for="nick">Jméno v tabulce dostupností</label><input class="input" id="nick" name="nick" value="${esc(s.nick ?? '')}" placeholder="např. TERKA" style="height:46px;text-transform:uppercase"></div>
+        <fieldset><legend>Úvazek</legend>${seg('contract', s.contract ?? 'DPP', E.CONTRACTS.map((c) => [c, c])).replace('sm-seg', 'sm-seg big')}</fieldset>
+        <fieldset><legend>Dohodnutá priorita</legend>${seg('agreed', s.agreed ?? 2, [[1, 'Vysoká'], [2, 'Běžná'], [3, 'Nízká']]).replace('sm-seg', 'sm-seg big')}</fieldset>
+      </div>
+      <div class="stack" style="gap:8px">
+        <label class="sm-toggle"><input type="checkbox" name="lead" ${s.lead ? 'checked' : ''}>Může být vedoucí směny <small>(jen ZaZa)</small></label>
+        <label class="sm-toggle" style="background:#fff;border:1.5px solid var(--line)"><input type="checkbox" name="isNew" ${s.isNew ? 'checked' : ''}>Nový zaměstnanec <small>(jen štítek v přehledu)</small></label>
+        <label class="sm-toggle" style="background:#fff;border:1.5px solid var(--line)"><input type="checkbox" name="planActive" ${s.planActive === false ? '' : 'checked'}>Plánovat do směn <small>(vypni např. na dlouhodobou nepřítomnost)</small></label>
+      </div>
+      <div class="stack" style="gap:10px">
+        <div class="row" style="flex-wrap:wrap;justify-content:space-between"><h3 style="margin:0;font-size:17px">Pozice a priority</h3><span class="small muted"><b>1</b> hlavní pozice · <b>2</b> když nejde jinak · <b>3</b> krajní nouze · <b>–</b> nedělá</span></div>
+        <div class="sm-grid3">${venueBox('zaza', 'ZaZa Bar', 'g-bar')}${venueBox('zaza', 'ZaZa Kuchyň', 'g-kitchen')}${venueBox('little', 'Little ZaZa', 'g-little')}</div>
+      </div>
+      <div class="stack" style="gap:10px">
+        <h3 style="margin:0;font-size:17px">Limity na měsíc <span class="small muted" style="font-weight:500">· prázdné = bez limitu</span></h3>
+        <div class="sm-grid4">
+          <div class="sm-box"><b class="small">Směny za měsíc</b><div class="sm-num">${num('minShifts', 'min', s.minShifts)}<span class="dash">–</span>${num('maxShifts', 'max', s.maxShifts)}</div><span class="hint">Pod minimem dostane přednost</span></div>
+          <div class="sm-box"><b class="small">Hodiny za měsíc</b><div class="sm-num">${num('minHours', 'min', s.minHours)}<span class="dash">–</span>${num('maxHours', 'max', s.maxHours)}</div><span class="hint">Maximum návrh nepřekročí</span></div>
+          <div class="sm-box"><b class="small">Víkendové dny (So + Ne)</b><div class="sm-num">${num('maxWeekend', 'max', s.maxWeekend)}</div><span class="hint">Nejvýš za měsíc</span></div>
+          <div class="sm-box"><b class="small">Směny po sobě</b><div class="sm-num">${num('maxRun', 'max', s.maxRun)}</div><span class="hint">Pak musí mít aspoň den volna</span></div>
+        </div>
+      </div>
+      <div class="sm-info">${icon('note', 18, 'var(--green)')}<span>Týdny L / S pro pizzaře se klikají v záložce <a href="/smeny-rotace.html">Rotace pizzařů</a>. Kdo má ve stejný den víc pozic, dostane vždy jen jednu.</span></div>
+      ${s.account ? '' : `<div><button type="button" class="btn small ghost" id="del">${icon('trash', 16)}Smazat ${esc(s.name)}</button></div>`}
+    </form>`;
+  }
+
+  function render() {
+    const s = D.staff.find((x) => x.id === selected) ?? null;
+    main.innerHTML = `${SM.tabs('lide', month)}
+      <div class="sm-split"><div class="card sm-list">${listHtml()}</div><div class="card sm-form" id="form">${formHtml(s)}</div></div>`;
+    const q = document.getElementById('q');
+    q.addEventListener('input', () => { query = q.value; const pos = q.selectionStart; render(); const n = document.getElementById('q'); n.focus(); n.setSelectionRange(pos, pos); });
+    document.getElementById('f')?.addEventListener('submit', save);
+    document.getElementById('del')?.addEventListener('click', del);
+  }
+
+  async function reload() { D = await SM.load(month); render(); }
+
+  async function save(e) {
+    e.preventDefault();
+    const f = e.target;
+    const fd = new FormData(f);
+    const positions = {};
+    for (const p of cfg.positions) { const v = fd.get(`pos:${p.key}`); if (v) positions[p.key] = Number(v); }
+    const val = (n) => { const v = String(fd.get(n) ?? '').trim(); return v === '' ? null : Number(v.replace(',', '.')); };
+    const bodyData = {
+      name: fd.get('name') ?? undefined, nick: String(fd.get('nick') ?? '').trim(), contract: fd.get('contract'), agreed: Number(fd.get('agreed')),
+      lead: fd.has('lead'), isNew: fd.has('isNew'), planActive: fd.has('planActive'), positions,
+      rot: { zaza: fd.has('rot:zaza') && Boolean(positions['zaza-pizzar']), little: fd.has('rot:little') && Boolean(positions['little-pizzar']) },
+      minShifts: val('minShifts'), maxShifts: val('maxShifts'), minHours: val('minHours'), maxHours: val('maxHours'), maxWeekend: val('maxWeekend'), maxRun: val('maxRun'),
+    };
+    const btn = f.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      await BC.api(`smeny/staff/${selected}`, { method: 'PUT', body: bodyData });
+      BC.toast('Uloženo.');
+      await reload();
+    } catch (ex) { BC.toast(ex.message, true); btn.disabled = false; }
+  }
+
+  async function del() {
+    const s = D.staff.find((x) => x.id === selected);
+    if (!confirm(`Opravdu smazat ${s.name} ze Směn?`)) return;
+    try { await BC.api(`smeny/staff/${selected}`, { method: 'DELETE' }); selected = null; history.replaceState(null, '', location.pathname); BC.toast('Smazáno.'); await reload(); } catch (ex) { BC.toast(ex.message, true); }
+  }
+
+  main.addEventListener('click', async (e) => {
+    const pick = e.target.closest('[data-pick]');
+    if (pick && !e.metaKey && !e.ctrlKey) { e.preventDefault(); selected = pick.dataset.pick; history.replaceState(null, '', `?id=${selected}`); render(); document.getElementById('form').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    const fl = e.target.closest('[data-filter]');
+    if (fl) { filter = fl.dataset.filter; render(); return; }
+    if (e.target.closest('#add')) {
+      const name = prompt('Jméno a příjmení nového člověka (bez účtu v BaseCampu):');
+      if (!name?.trim()) return;
+      try { const r = await BC.api('smeny/staff', { method: 'POST', body: { name: name.trim() } }); selected = r.id; history.replaceState(null, '', `?id=${selected}`); await reload(); BC.toast('Přidáno – doplň pozice a limity.'); } catch (ex) { BC.toast(ex.message, true); }
+    }
+  });
+
+  if (!selected || !D.staff.some((s) => s.id === selected)) selected = window.matchMedia('(min-width: 1000px)').matches ? D.staff[0]?.id ?? null : null;
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

@@ -16,7 +16,24 @@
 .matrix a:hover { color: var(--coral-dark); }
 .count-ok { color: var(--ok-text); font-weight: 700; }
 .count-no { color: var(--no-text); font-weight: 700; }
-@media (min-width: 900px) { .segmented { width: fit-content; } }
+.views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.views button { padding: 12px 10px; border-radius: 14px; border: 1.5px solid #E0D9CD; background: #fff; color: var(--ink-2); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.views button[aria-selected="true"] { background: var(--green); border-color: var(--green); color: #fff; }
+.pcard { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.pcard-top { display: flex; align-items: center; gap: 12px; }
+.pcard-top a { text-decoration: none; color: var(--ink); font-weight: 700; font-size: 15px; }
+.pcard-top a:hover { color: var(--coral-dark); }
+.bar { height: 8px; border-radius: 4px; background: var(--cream-2); overflow: hidden; }
+.bar > div { height: 100%; border-radius: 4px; background: var(--green); }
+.bar.warn > div { background: #E08A2E; }
+.miss { display: flex; flex-wrap: wrap; gap: 6px; }
+.miss span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; background: var(--no-bg); color: var(--no-text); font-size: 13px; font-weight: 600; }
+.miss span::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--sec, var(--no)); flex-shrink: 0; }
+.miss a { color: inherit; text-decoration: none; }
+.miss button { border: 0; background: none; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 5px 4px; }
+.allok { color: var(--ok-text); font-size: 13px; font-weight: 700; }
+@media (max-width: 600px) { #q { width: 100% !important; } #onlyWrap { width: 100%; } }
+@media (min-width: 900px) { .views { width: fit-content; grid-template-columns: repeat(3, auto); } .views button { padding: 10px 18px; } }
 </style>
 </head>
 <body>
@@ -27,34 +44,111 @@
   await BC.init({ active: 'admin', admin: true });
   const { esc } = BC;
   const sections = BC.meta.sections.filter((s) => !s.public);
-  const requested = new URLSearchParams(location.search).get('s');
-  const current = sections.some((s) => s.id === requested) ? requested : sections[0].id;
-  const data = await BC.api(`admin/overview?section=${current}`);
+  const params = new URLSearchParams(location.search);
+  let view = ['lide', 'dokumenty', 'tabulka'].includes(params.get('v')) ? params.get('v') : 'lide';
+  let sec = sections.some((s) => s.id === params.get('s')) ? params.get('s') : '';
+  const summary = await BC.api('admin/summary');
+  const MAX_CHIPS = 6;
   const main = document.getElementById('main');
 
   main.innerHTML = `
     ${BC.adminTabs('prehled')}
     <div class="row" style="flex-wrap:wrap;align-items:flex-end"><h1>Přehled seznámení</h1><span class="spacer"></span>
-      <div class="legend"><span>${BC.mark('ok')}přečteno</span><span>${BC.mark('no')}povinné, nepřečtené</span><span>${BC.mark('na')}nepovinné</span></div></div>
-    <div class="tools">
-      <nav class="filter" aria-label="Sekce">${sections.map((s) => `<a href="?s=${s.id}" data-sec="${s.id}" class="${s.id === current ? 'active' : ''}"${s.id === current ? ' aria-current="page"' : ''}>${esc(s.name)}</a>`).join('')}</nav>
-      <span class="spacer"></span>
-      <label class="row small" style="gap:8px;font-weight:600"><input type="checkbox" id="onlyRel" checked style="width:18px;height:18px;accent-color:var(--green)">Jen s povinnou pozicí v sekci</label>
-      <label for="q" class="sr-only">Hledat zaměstnance</label>
-      <input class="input" id="q" type="search" placeholder="Hledat jméno" style="width:220px;height:44px">
+      <div class="legend" id="legend"><span>${BC.mark('ok')}přečteno</span><span>${BC.mark('no')}povinné, nepřečtené</span><span>${BC.mark('na')}nepovinné</span></div></div>
+    <div class="views" role="tablist" aria-label="Pohled">
+      <button type="button" role="tab" data-view="lide">Kdo co nemá</button>
+      <button type="button" role="tab" data-view="dokumenty">Podle dokumentu</button>
+      <button type="button" role="tab" data-view="tabulka">Tabulka</button>
     </div>
-    <div id="table"></div>
+    <div class="tools">
+      <nav class="filter" aria-label="Sekce" id="secFilter"></nav>
+      <span class="spacer"></span>
+      <label class="row small" style="gap:8px;font-weight:600" id="onlyWrap"><input type="checkbox" id="only" checked style="width:18px;height:18px;accent-color:var(--green)"><span id="onlyText"></span></label>
+      <label for="q" class="sr-only">Hledat</label>
+      <input class="input" id="q" type="search" style="width:220px;height:44px">
+    </div>
+    <div id="out" class="stack" style="gap:10px"></div>
     <p class="small muted" id="note"></p>
   `;
 
-  function render() {
-    const only = document.getElementById('onlyRel').checked;
+  const pct = (done, total) => (total ? Math.round((done / total) * 100) : 100);
+  const bar = (done, total) => `<div class="bar${done < total ? ' warn' : ''}" role="progressbar" aria-valuenow="${pct(done, total)}" aria-valuemin="0" aria-valuemax="100"><div style="width:${pct(done, total)}%"></div></div>`;
+  const expanded = new Set();
+
+  function chips(list, key, render) {
+    const open = expanded.has(key);
+    const shown = open ? list : list.slice(0, MAX_CHIPS);
+    return `<div class="miss">${shown.map(render).join('')}${list.length > MAX_CHIPS ? `<button type="button" data-more="${esc(key)}">${open ? 'Méně' : `+ dalších ${list.length - MAX_CHIPS}`}</button>` : ''}</div>`;
+  }
+
+  function renderFilter() {
+    const opts = view === 'tabulka' ? sections : [{ id: '', name: 'Vše' }, ...sections];
+    if (view === 'tabulka' && !sec) sec = sections[0].id;
+    document.getElementById('secFilter').innerHTML = opts.map((s) => `<a href="#" data-s="${s.id}" ${s.id ? `data-sec="${s.id}"` : ''} class="${s.id === sec ? 'active' : ''}">${esc(s.name)}</a>`).join('');
+  }
+
+  function renderPeople() {
+    const only = document.getElementById('only').checked;
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const list = summary.people
+      .map((p) => {
+        const missing = sec ? p.missing.filter((m) => m.section === sec) : p.missing;
+        return { ...p, missing, relevant: p.total > 0 };
+      })
+      .filter((p) => p.relevant && (!only || p.missing.length) && (!q || p.name.toLowerCase().includes(q)))
+      .sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name, 'cs'));
+    const out = document.getElementById('out');
+    out.innerHTML = list.length ? list.map((p) => `
+      <div class="card pcard">
+        <div class="pcard-top">
+          <span class="avatar" style="width:38px;height:38px;font-size:13px">${esc(BC.initials(p.name))}</span>
+          <span class="item-main"><a href="/admin-zamestnanec.html?id=${esc(p.id)}">${esc(p.name)}</a><span class="item-sub">${p.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</span></span>
+          <span class="${p.done < p.total ? 'count-no' : 'count-ok'}" style="white-space:nowrap">${p.done} / ${p.total}</span>
+        </div>
+        ${bar(p.done, p.total)}
+        ${p.missing.length ? chips(p.missing, `p-${p.id}`, (m) => `<span data-sec="${esc(m.section)}" title="${esc(BC.sectionName(m.section))} · ${m.kind === 'link' ? 'odkaz' : `verze ${esc(m.version)}`}">${esc(m.title)}</span>`) : '<span class="allok">✓ Má přečtené všechno povinné' + (sec ? ' v této sekci' : '') + '</span>'}
+      </div>`).join('')
+      : `<div class="card empty">${only ? 'Nikdo nic nedluží, všichni mají přečtené.' : 'Nikoho takového nenacházím.'}</div>`;
+    const debtors = summary.people.filter((p) => (sec ? p.missing.some((m) => m.section === sec) : p.missing.length)).length;
+    document.getElementById('note').textContent = `${debtors} z ${summary.people.filter((p) => p.total).length} zaměstnanců má něco nepřečtené${sec ? ` v sekci ${BC.sectionName(sec)}` : ''}. Na celou kartu se dostaneš klepnutím na jméno.`;
+  }
+
+  function renderDocs() {
+    const only = document.getElementById('only').checked;
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const list = summary.documents
+      .filter((d) => (!sec || d.section === sec) && d.total > 0 && (!only || d.done < d.total) && (!q || d.title.toLowerCase().includes(q)))
+      .sort((a, b) => (a.done / a.total) - (b.done / b.total) || b.uploadedAt.localeCompare(a.uploadedAt));
+    const out = document.getElementById('out');
+    out.innerHTML = list.length ? list.map((d) => `
+      <div class="card pcard" data-sec="${esc(d.section)}">
+        <div class="pcard-top">
+          ${BC.icon(d.kind === 'link' ? 'link' : 'file', 22, 'var(--sec)')}
+          <span class="item-main"><span class="item-title">${esc(d.title)}</span><span class="item-sub">${esc(BC.sectionName(d.section))} · ${esc(d.heading)} · ${d.kind === 'link' ? 'odkaz přidaný' : `verze ${esc(d.version)} z`} ${BC.fmtDate(d.uploadedAt)}</span></span>
+          <span class="${d.done < d.total ? 'count-no' : 'count-ok'}" style="white-space:nowrap">${d.done} / ${d.total}</span>
+        </div>
+        ${bar(d.done, d.total)}
+        ${d.missing.length ? `<span class="small muted">Ještě neotevřeli:</span>${chips(d.missing, `d-${d.id}`, (m) => `<span style="--sec:var(--no)"><a href="/admin-zamestnanec.html?id=${esc(m.id)}">${esc(m.name)}</a></span>`)}` : '<span class="allok">✓ Přečetli všichni</span>'}
+      </div>`).join('')
+      : `<div class="card empty">${only ? 'Všechny povinné dokumenty mají přečtené všichni.' : 'Žádné povinné dokumenty.'}</div>`;
+    const open = summary.documents.filter((d) => (!sec || d.section === sec) && d.done < d.total).length;
+    document.getElementById('note').textContent = `${open} povinných dokumentů${sec ? ` v sekci ${BC.sectionName(sec)}` : ''} ještě někdo nepřečetl. Počítá se vždy nejnovější verze.`;
+  }
+
+  let tableData = null;
+  async function renderTable() {
+    const out = document.getElementById('out');
+    if (!tableData || tableData.section !== sec) {
+      out.innerHTML = '<p class="muted">Načítám…</p>';
+      tableData = await BC.api(`admin/overview?section=${sec}`);
+    }
+    const data = tableData;
+    const only = document.getElementById('only').checked;
     const q = document.getElementById('q').value.trim().toLowerCase();
     const rows = data.rows.filter((r) => (!only || r.relevant) && (!q || r.name.toLowerCase().includes(q)));
     const relevantCount = data.rows.filter((r) => r.relevant).length;
-    const el = document.getElementById('table');
-    if (!data.columns.length) { el.innerHTML = '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'; document.getElementById('note').textContent = ''; return; }
-    el.innerHTML = `<div class="card table-wrap"><table class="matrix">
+    if (!data.columns.length) { out.innerHTML = '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'; document.getElementById('note').textContent = ''; return; }
+    out.innerHTML = `<div class="card table-wrap"><table class="matrix">
       <thead><tr><th scope="col">Zaměstnanec <span class="muted" style="font-weight:500">· podle chybějících</span></th>
         ${data.columns.map((c) => `<th scope="col"><div>${esc(c.title)}</div><div class="muted" style="font-size:11px;font-weight:500">${esc(c.version)} · ${c.mandatoryFor.length ? c.mandatoryFor.map(BC.positionName).map(esc).join(', ') : 'nepovinné'}</div>
           ${c.total ? `<div class="${c.done === c.total ? 'count-ok' : 'count-no'}" style="margin-top:6px;font-size:12px">${c.done} / ${c.total}</div>` : ''}</th>`).join('')}
@@ -65,11 +159,42 @@
         <td class="${r.missing ? 'count-no' : 'count-ok'}">${r.missing}</td></tr>`).join('')
         : `<tr><td colspan="${data.columns.length + 2}" class="muted" style="text-align:center">Nikoho takového nenacházím.</td></tr>`}</tbody>
     </table></div>`;
-    document.getElementById('note').textContent = `${relevantCount} z ${data.totalUsers} aktivních zaměstnanců má pozici, pro kterou je něco v sekci ${BC.sectionName(current)} povinné.${only ? ' Ostatní uvidíš po vypnutí filtru.' : ''}`;
+    document.getElementById('note').textContent = `${relevantCount} z ${data.totalUsers} aktivních zaměstnanců má pozici, pro kterou je něco v sekci ${BC.sectionName(sec)} povinné.${only ? ' Ostatní uvidíš po vypnutí filtru.' : ''} Při velkém počtu dokumentů se tabulka posouvá do strany.`;
   }
-  document.getElementById('onlyRel').addEventListener('change', render);
+
+  async function render() {
+    document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === view)));
+    document.getElementById('legend').hidden = view !== 'tabulka';
+    document.getElementById('onlyText').textContent = view === 'lide' ? 'Jen ti, kdo něco nemají' : view === 'dokumenty' ? 'Jen nedočtené dokumenty' : 'Jen s povinnou pozicí v sekci';
+    document.getElementById('q').placeholder = view === 'dokumenty' ? 'Hledat dokument' : 'Hledat jméno';
+    renderFilter();
+    const u = new URL(location.href);
+    u.searchParams.set('v', view);
+    if (sec) u.searchParams.set('s', sec); else u.searchParams.delete('s');
+    history.replaceState(null, '', u.pathname + u.search);
+    if (view === 'lide') renderPeople();
+    else if (view === 'dokumenty') renderDocs();
+    else await renderTable();
+  }
+
+  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; document.getElementById('q').value = ''; render(); }));
+  document.getElementById('secFilter').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-s]');
+    if (!a) return;
+    e.preventDefault();
+    sec = a.dataset.s;
+    render();
+  });
+  document.getElementById('only').addEventListener('change', render);
   document.getElementById('q').addEventListener('input', render);
-  render();
+  document.getElementById('out').addEventListener('click', (e) => {
+    const m = e.target.closest('[data-more]');
+    if (!m) return;
+    const k = m.dataset.more;
+    if (expanded.has(k)) expanded.delete(k); else expanded.add(k);
+    render();
+  });
+  await render();
 })().catch(BC.fail);
 </script>
 </body>

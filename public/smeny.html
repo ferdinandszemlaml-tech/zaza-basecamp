@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rozpis směn · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+</head>
+<body>
+<main class="bc-main wide" id="main" style="max-width:1480px"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc, icon } = BC;
+  const month = SM.currentMonth();
+  const D = await SM.load(month);
+  const cfg = D.config;
+  let plan = D.plan;
+  const days = E.monthDays(month);
+  const weeks = E.monthWeeks(month);
+  const today = new Date().toISOString().slice(0, 10);
+  let weekIdx = Math.max(0, weeks.findIndex((w) => today >= w && today <= E.addDays(w, 6)));
+  let dayIdx = Math.max(0, days.indexOf(today));
+  const staffById = new Map(D.staff.map((s) => [s.id, s]));
+  const planned = D.staff.filter((s) => s.active && SM.hasPositions(s));
+  const main = document.getElementById('main');
+  const slotsAll = E.buildSlots(cfg, month);
+  const slotIds = new Set(slotsAll.map((s) => s.id));
+  const keysInMonth = new Set(slotsAll.map((s) => s.key));
+  let ev = null;
+
+  const evaluate = () => { ev = E.evaluate({ config: cfg, staff: D.staff, availability: D.availability, month, plan }); };
+  async function savePlan() {
+    try {
+      const r = await BC.api(`smeny/plan?month=${month}`, { method: 'PUT', body: plan });
+      plan.savedAt = r.plan.savedAt;
+    } catch (e) { BC.toast(e.message, true); }
+  }
+  const nameOf = (pid) => SM.shortName(staffById.get(pid)?.name ?? '?');
+  const rotType = (venue, pid, date) => (cfg.rotation[venue]?.enabled && staffById.get(pid)?.rot?.[venue] ? (D.rotation?.[E.weekStart(date)]?.[pid] ?? '') : '');
+
+  function cellHtml(date, key, idx) {
+    if (!days.includes(date)) return '<div class="sm-cell out" aria-hidden="true"></div>';
+    const sid = `${date}|${key}|${idx}`;
+    const p = SM.pos(cfg, key);
+    if (!slotIds.has(sid)) return `<div class="sm-cell closed">${cfg.venues[p.venue].open.includes(E.dow(date)) ? '—' : 'Zavřeno'}</div>`;
+    const pid = plan?.assign?.[sid] ?? null;
+    const info = ev.slotInfo[sid];
+    const label = `${E.DAY_NAMES[E.dow(date)]} ${E.fmtDay(date)}, ${SM.posLabel(cfg, key)}`;
+    if (!pid) return `<button type="button" class="sm-cell empty" data-slot="${esc(sid)}" aria-label="${esc(label)}: neobsazeno">${icon('plus', 14)}Neobsazeno</button>`;
+    const slot = slotsAll.find((s) => s.id === sid);
+    const tags = [];
+    if (E.LEAD_KEYS.includes(key) && ev.dayInfo[date]?.lead === pid) tags.push('<span class="tag lead" title="Vedoucí směny">V</span>');
+    const rt = key.endsWith('-pizzar') ? rotType(p.venue, pid, date) : '';
+    if (rt === 'L' || rt === 'S') tags.push(`<span class="tag rot" title="Týden pizzaře">${rt}</span>`);
+    if (info.tag) tags.push(`<span class="tag warn">${esc(info.tag)}</span>`);
+    if (info.cover) tags.push('<span class="tag cover">zaskakuje</span>');
+    if (plan?.locked?.[sid]) tags.push(`<span class="tag lock" title="Upraveno ručně">${icon('edit', 12)}</span>`);
+    const sub = info.state === 'bad' || info.state === 'warn' ? info.notes[0] : SM.fmtH(slot.hours);
+    return `<button type="button" class="sm-cell ${info.state === 'ok' ? '' : info.state}" data-slot="${esc(sid)}" aria-label="${esc(label)}: ${esc(staffById.get(pid)?.name ?? '?')}" title="${esc(info.notes.join(' · '))}">
+      <span class="n">${esc(nameOf(pid))}${tags.join('')}</span><span class="s">${esc(sub)}</span></button>`;
+  }
+
+  function weekHtml() {
+    const w = weeks[weekIdx];
+    const wd = Array.from({ length: 7 }, (_, i) => E.addDays(w, i));
+    let html = `<div class="sm-row"><div></div>${wd.map((d) => {
+      const di = ev.dayInfo[d];
+      return `<div class="sm-dayhead ${E.isWeekend(d) ? 'we' : ''} ${days.includes(d) ? '' : 'out'}"><span>${E.DAY_NAMES[E.dow(d)]}</span><b>${E.fmtDay(d)}</b>${di?.noLead ? '<span class="nolead">bez vedoucího</span>' : ''}</div>`;
+    }).join('')}</div>`;
+    for (const g of SM.GROUPS) {
+      const ps = cfg.positions.filter((p) => p.group === g && p.count > 0 && keysInMonth.has(p.key));
+      if (!ps.length) continue;
+      const note = g === 'ZaZa Bar' ? 'každý den 1 vedoucí směny' : g === 'ZaZa Kuchyň' && cfg.rotation.zaza.enabled ? 'pizzaři podle rotace L / S' : g === 'Little ZaZa' && cfg.rotation.little.enabled ? 'pizzaři podle rotace L / S' : '';
+      html += `<div class="sm-group ${SM.groupClass(g)}"><b>${esc(g)}</b><span>${esc(note)}</span></div>`;
+      for (const p of ps) {
+        for (let i = 0; i < p.count; i++) {
+          html += `<div class="sm-row"><div class="sm-poslabel"><b>${esc(p.name)}</b><span>${SM.timeRange(p.wd)} · víkend ${SM.timeRange(p.we)}</span></div>${wd.map((d) => cellHtml(d, p.key, i)).join('')}</div>`;
+        }
+      }
+    }
+    return html;
+  }
+
+  function dayHtml() {
+    const date = days[dayIdx];
+    const empty = ev.slots.filter((s) => s.date === date && ev.slotInfo[s.id].state === 'empty').length;
+    let html = `<div class="sm-daynav"><button type="button" class="sm-nav-btn" data-day="-1" aria-label="Předchozí den" ${dayIdx === 0 ? 'disabled' : ''}>${icon('back', 18)}</button>
+      <div><h2>${esc(E.DAY_LONG[E.dow(date)])} ${E.fmtDay(date)}</h2>${empty ? `<span class="sub">${empty} ${empty === 1 ? 'místo neobsazené' : empty < 5 ? 'místa neobsazená' : 'míst neobsazených'}</span>` : ''}${ev.dayInfo[date]?.noLead ? '<span class="sub">bez vedoucího směny</span>' : ''}</div>
+      <button type="button" class="sm-nav-btn" data-day="1" aria-label="Další den" ${dayIdx === days.length - 1 ? 'disabled' : ''}>${icon('chevron', 18)}</button></div>`;
+    for (const g of SM.GROUPS) {
+      const ss = ev.slots.filter((s) => s.date === date && SM.pos(cfg, s.key).group === g);
+      if (!ss.length) continue;
+      html += `<div class="card sm-daycard"><h3>${esc(g)}</h3>${ss.map((s) => {
+        const pid = plan?.assign?.[s.id];
+        const info = ev.slotInfo[s.id];
+        const lead = E.LEAD_KEYS.includes(s.key) && pid && ev.dayInfo[date]?.lead === pid ? '<span class="tag lead">V</span>' : '';
+        const rt = pid && s.key.endsWith('-pizzar') ? rotType(s.venue, pid, date) : '';
+        return `<button type="button" class="sm-dayrow ${pid ? (info.state === 'ok' ? '' : info.state) : 'empty'}" data-slot="${esc(s.id)}">
+          <span class="p">${esc(SM.pos(cfg, s.key).name)}</span>
+          <span class="who">${pid ? `${esc(staffById.get(pid)?.name ?? '?')}${lead}${rt === 'L' || rt === 'S' ? `<span class="tag rot">${rt}</span>` : ''}${info.tag ? `<span class="tag warn">${esc(info.tag)}</span>` : ''}` : 'Neobsazeno – vybrat'}</span>
+          <span class="t">${SM.timeRange([s.from, s.to])}</span></button>`;
+      }).join('')}</div>`;
+    }
+    return html;
+  }
+
+  function peopleHtml() {
+    const order = { over: 0, under: 1, info: 2 };
+    const list = planned.map((s) => ({ s, r: ev.people[s.id] }))
+      .sort((a, b) => (order[a.r.issues[0]?.kind] ?? 3) - (order[b.r.issues[0]?.kind] ?? 3) || a.s.name.localeCompare(b.s.name, 'cs'));
+    return `<div class="sm-people-head"><h2>Lidé · ${esc(E.monthLabel(month))}</h2><span class="small muted">${list.length} lidí</span></div>
+      <div class="sm-people-list">${list.map(({ s, r }) => {
+        const iss = r.issues[0];
+        const top = Math.max(s.maxHours ?? 0, r.hours, s.minHours ?? 0, 1) * 1.12;
+        const pct = (v) => `${Math.min(100, Math.round((v / top) * 100))}%`;
+        const band = s.maxHours !== null && s.maxHours !== undefined ? `<span class="band" style="left:${pct(s.minHours ?? 0)};width:${pct((s.maxHours ?? 0) - (s.minHours ?? 0))}"></span>` : '';
+        const lim = s.minHours != null || s.maxHours != null ? `limit ${s.minHours ?? 0}–${s.maxHours ?? '∞'} h` : 'bez limitu hodin';
+        return `<div class="sm-person"><div class="top"><b>${esc(SM.shortName(s.name))}</b>${SM.contractChip(s.contract)}${SM.newChip(s)}
+            <span class="st ${iss?.kind ?? ''}">${esc(iss ? r.issues.map((i) => i.text).join(', ') : 'v pořádku')}</span></div>
+          <div class="sm-bar">${band}<span class="fill ${iss?.kind === 'over' ? 'over' : iss?.kind === 'under' ? 'under' : ''}" style="width:${pct(r.hours)}"></span></div>
+          <div class="nums"><span><b>${SM.fmtH(r.hours)}</b> · ${r.shifts} směn${r.leads ? ` · ${r.leads}× V` : ''}</span><span>víkend ${r.weekend}${s.maxWeekend != null ? ` / ${s.maxWeekend}` : ''}</span></div>
+          <div class="nums"><span class="lim">${esc(lim)}</span></div></div>`;
+      }).join('') || '<div class="empty">Zatím nikdo nemá nastavené pozice.</div>'}</div>`;
+  }
+
+  function weekLabel(w) {
+    const a = days.includes(w) ? w : days[0];
+    const end = E.addDays(w, 6);
+    const b = days.includes(end) ? end : days[days.length - 1];
+    return `${Number(a.slice(8))}.–${E.fmtDay(b)}`;
+  }
+
+  function render() {
+    evaluate();
+    const sm = ev.summary;
+    const unmatched = (D.availability?.rows ?? []).filter((r) => !r.pid && r.codes.some(Boolean)).length;
+    const alerts = [];
+    const per = D.period;
+    if (per?.status === 'open') alerts.push(`<a class="sm-alert orange" href="/smeny-dostupnosti.html?m=${month}">Dostupnosti se vyplňují do ${E.fmtDay(per.deadline)} · odevzdalo ${D.respStats.done} z ${D.respStats.planned}</a>`);
+    else if (per?.status === 'pending') alerts.push(`<a class="sm-alert orange" href="/smeny-dostupnosti.html?m=${month}">Vyplňování dostupností se otevře ${E.fmtDay(per.opens)}</a>`);
+    if (!D.availability && per?.status !== 'pending') alerts.push(`<a class="sm-alert orange" href="/smeny-dostupnosti.html?m=${month}">Na ${esc(E.monthLabel(month))} zatím nikdo nevyplnil dostupnost</a>`);
+    if (!planned.length) alerts.push('<a class="sm-alert orange" href="/smeny-lide.html">Nikdo zatím nemá nastavené pozice – nastavit zaměstnance</a>');
+    if (unmatched) alerts.push(`<a class="sm-alert orange" href="/smeny-import.html?m=${month}">${unmatched} ${unmatched === 1 ? 'řádek' : 'řádky'} z tabulky bez přiřazeného člověka</a>`);
+    if (plan) {
+      if (sm.empty) alerts.push(`<span class="sm-alert red">${sm.empty} neobsazen${sm.empty === 1 ? 'é místo' : sm.empty < 5 ? 'á místa' : 'ých míst'}</span>`);
+      if (sm.bad) alerts.push(`<span class="sm-alert red">${sm.bad} ${sm.bad === 1 ? 'obsazení porušuje' : 'obsazení porušují'} dostupnost</span>`);
+      if (sm.warn) alerts.push(`<span class="sm-alert orange">${sm.warn} nouzov${sm.warn === 1 ? 'é obsazení' : 'ých obsazení'}</span>`);
+      if (sm.noLead) alerts.push(`<span class="sm-alert orange">${sm.noLead} ${sm.noLead === 1 ? 'den' : sm.noLead < 5 ? 'dny' : 'dní'} bez vedoucího</span>`);
+      if (sm.underMin) alerts.push(`<span class="sm-alert orange">${sm.underMin} pod minimem hodin</span>`);
+      if (sm.over) alerts.push(`<span class="sm-alert red">${sm.over} přes limit</span>`);
+      if (!sm.empty && !sm.bad && !sm.warn && !sm.noLead && !sm.over && !sm.underMin) alerts.push('<span class="sm-alert green">Vše obsazeno podle pravidel</span>');
+    }
+    const status = plan ? `Uloženo ${plan.savedAt ? BC.fmtShort(plan.savedAt) : ''}${plan.edits ? ` · ručně upraveno ${plan.edits}×` : ''}` : 'Zatím bez návrhu';
+    main.innerHTML = `
+      ${SM.tabs('rozpis', month)}
+      <div class="sm-head">
+        <div class="sm-month"><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, -1)}" aria-label="Předchozí měsíc">${icon('back', 18)}</a>
+          <h1>${esc(SM.monthTitle(month))}</h1><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, 1)}" aria-label="Další měsíc">${icon('chevron', 18)}</a></div>
+        <span class="sm-status ${plan ? '' : 'warn'}">${esc(status)}</span>
+        <div class="sm-actions">
+          ${plan ? `<a class="btn small outline" href="/smeny-tisk.html?m=${month}" target="_blank" rel="noopener">${icon('file', 17)}Export PDF</a>
+          <button type="button" class="btn small outline" id="xls">${icon('note', 17)}Export Excel</button>` : ''}
+          <button type="button" class="btn small" id="gen" ${D.availability && planned.length ? '' : 'disabled'}>${plan ? 'Navrhnout znovu' : 'Navrhnout rozpis'}</button>
+        </div>
+      </div>
+      ${alerts.length ? `<div class="sm-chips">${alerts.join('')}</div>` : ''}
+      ${plan ? `
+      <div class="sm-weeks" role="group" aria-label="Týden">${weeks.map((w, i) => `<button type="button" data-week="${i}" class="${i === weekIdx ? 'active' : ''}" aria-pressed="${i === weekIdx}">${esc(weekLabel(w))}</button>`).join('')}</div>
+      <div class="sm-layout">
+        <div class="sm-grid-wrap">
+          <div class="card sm-grid sm-week">${weekHtml()}</div>
+          <div class="sm-legend sm-week"><span><span class="tag lead">V</span>vedoucí směny</span><span><span class="tag rot">L / S</span>týden pizzaře</span>
+            <span><i style="background:var(--no-bg);border:1.5px solid #E3A35E"></i>nouzové obsazení (priorita 3 nebo „jen Little“)</span>
+            <span><i style="background:#FBE9E5;border:1.5px dashed #C63A1F"></i>nikdo nemůže – klikni a vyber</span><span>${icon('edit', 12)} upraveno ručně</span></div>
+          <div class="sm-day">${dayHtml()}</div>
+        </div>
+        <aside class="card sm-people">${peopleHtml()}</aside>
+      </div>` : `<div class="card card-pad empty" style="padding:40px 20px">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:700;color:var(--ink)">Na ${esc(E.monthLabel(month))} zatím není žádný návrh.</p>
+        <p style="margin:0">Až budou nahrané dostupnosti a nastavení zaměstnanci, klikni na <b>Navrhnout rozpis</b>.</p></div>`}`;
+  }
+
+  main.addEventListener('click', async (e) => {
+    const w = e.target.closest('[data-week]');
+    if (w) { weekIdx = Number(w.dataset.week); render(); return; }
+    const d = e.target.closest('[data-day]');
+    if (d) { dayIdx = Math.min(days.length - 1, Math.max(0, dayIdx + Number(d.dataset.day))); render(); return; }
+    const c = e.target.closest('[data-slot]');
+    if (c) { openSlot(c.dataset.slot); return; }
+    if (e.target.closest('#gen')) { askGenerate(); return; }
+    if (e.target.closest('#xls')) { exportExcel().catch((ex) => BC.toast(ex.message, true)); }
+  });
+
+  function openSlot(sid) {
+    const o = E.optionsForSlot({ config: cfg, staff: D.staff, availability: D.availability, month, plan, slotId: sid });
+    if (!o) return;
+    const { slot, rows } = o;
+    const current = plan.assign[sid] ?? null;
+    const isLeadPos = E.LEAD_KEYS.includes(slot.key);
+    const leadNow = ev.dayInfo[slot.date]?.lead;
+    const row = (r) => `<label class="sm-opt ${r.group === 'emergency' ? 'emergency' : ''}">
+        <input type="radio" name="who" value="${esc(r.id)}" ${r.current ? 'checked' : ''}>
+        <span class="m"><b>${esc(r.name)} ${SM.contractChip(r.contract)}${SM.newChip(r)}${r.tier ? `<span class="sm-chip acc">priorita ${r.tier}</span>` : ''}${r.flag === 'LITTLE' ? '<span class="tag warn">LITTLE</span>' : ''}${r.lead && isLeadPos ? '<span class="tag lead">může vést</span>' : ''}</b>
+        <span>Teď ${SM.fmtH(r.before)} → ${SM.fmtH(r.after)}${r.minHours != null || r.maxHours != null ? ` · limit ${r.minHours ?? 0}–${r.maxHours ?? '∞'} h` : ''}</span>
+        ${r.note ? `<span style="color:#6E1C44;background:#F6E3EC;border-radius:6px;padding:2px 7px;width:fit-content">Poznámka: ${esc(r.note)}</span>` : ''}
+        ${r.below ? '<em>Je pod minimem – dostal/a by přednost</em>' : ''}${r.warn.length ? `<em>${esc(r.warn.join(' · '))}</em>` : ''}</span></label>`;
+    const can = rows.filter((r) => r.group === 'can');
+    const emer = rows.filter((r) => r.group === 'emergency');
+    const ask = rows.filter((r) => r.group === 'ask');
+    const no = rows.filter((r) => r.group === 'no');
+    const dlg = SM.dialog(`<form method="dialog" id="f">
+      <div class="sm-dlg-head"><div style="flex-grow:1"><div class="k">${current ? 'Změna obsazení' : 'Neobsazené místo'}</div>
+        <h2>${esc(E.DAY_NAMES[slot.dow])} ${E.fmtDay(slot.date)} · ${esc(SM.posLabel(cfg, slot.key))}</h2>
+        <div class="small">${SM.timeRange([slot.from, slot.to])} · ${SM.fmtH(slot.hours)}${leadNow ? ` · vedoucí směny: ${esc(staffById.get(leadNow)?.name ?? '')}` : ''}</div></div>
+        <button type="button" class="icon-btn" value="x" data-close aria-label="Zavřít" style="color:var(--ink-2)">✕</button></div>
+      <div class="sm-dlg-body">
+        <div class="sm-opt-h g">Můžou · seřazeno podle vhodnosti</div>
+        ${can.map(row).join('') || '<div class="small muted">Nikdo z těch, kdo tuhle pozici dělají, ten den nemůže.</div>'}
+        ${emer.length ? `<div class="sm-opt-h o">Jen v nouzi</div>${emer.map(row).join('')}` : ''}
+        ${ask.length ? `<div class="sm-opt-h n">Nevyplnili – dá se zeptat</div>${ask.map(row).join('')}` : ''}
+        <label class="sm-opt"><input type="radio" name="who" value="" ${current ? '' : 'checked'}><span class="m"><b>Nechat neobsazené</b></span></label>
+        ${no.length ? `<details class="sm-more" ${current && no.some((r) => r.current) ? 'open' : ''}><summary>Nemůžou podle tabulky: ${no.length} ${no.length === 1 ? 'člověk' : no.length < 5 ? 'lidé' : 'lidí'}</summary><div class="stack">
+          <span class="hint">Když se s někým domluvíš osobně, můžeš ho vybrat i tady. Směna se označí jako mimo dostupnost.</span>
+          ${no.map((r) => (r.reason === 'Ten den už má směnu' && !r.current
+            ? `<div class="sm-opt no"><span class="m"><b>${esc(r.name)}</b><span>${esc(r.reason)}</span></span></div>`
+            : `<label class="sm-opt no" style="cursor:pointer;opacity:1"><input type="radio" name="who" value="${esc(r.id)}" ${r.current ? 'checked' : ''}><span class="m"><b>${esc(r.name)} ${SM.contractChip(r.contract)}</b><span>${esc(r.reason)} · teď ${SM.fmtH(r.before)}</span></span></label>`)).join('')}</div></details>` : ''}
+        ${isLeadPos ? '<label class="sm-toggle" id="leadBox" style="margin-top:6px"><input type="checkbox" name="lead"> Vedoucí směny v tento den</label>' : ''}
+      </div>
+      <div class="sm-dlg-foot">
+        ${plan.locked?.[sid] ? '<button type="button" class="btn small ghost" style="color:var(--green)" data-unlock>Vrátit automatickému návrhu</button>' : ''}
+        <button type="button" class="btn small outline" data-close>Zrušit</button>
+        <button type="submit" class="btn small">Uložit</button></div></form>`);
+    const form = dlg.querySelector('#f');
+    const leadInput = form.querySelector('[name="lead"]');
+    const syncLead = () => {
+      if (!leadInput) return;
+      const pid = form.querySelector('[name="who"]:checked')?.value;
+      const ok = pid && staffById.get(pid)?.lead;
+      leadInput.disabled = !ok;
+      leadInput.checked = Boolean(ok && (leadNow === pid));
+      form.querySelector('#leadBox').style.opacity = ok ? '1' : '0.5';
+    };
+    syncLead();
+    form.addEventListener('change', (e) => { if (e.target.name === 'who') syncLead(); });
+    dlg.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+    dlg.querySelector('[data-unlock]')?.addEventListener('click', async () => {
+      delete plan.locked[sid];
+      dlg.close(); render(); await savePlan(); BC.toast('Místo se při dalším návrhu zase obsadí automaticky.');
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pid = form.querySelector('[name="who"]:checked')?.value || null;
+      plan.assign[sid] = pid;
+      plan.locked = { ...(plan.locked ?? {}), [sid]: true };
+      if (plan.flags) delete plan.flags[sid];
+      plan.lead = plan.lead ?? {};
+      if (leadInput && !leadInput.disabled && leadInput.checked) plan.lead[slot.date] = pid;
+      else if (leadInput && plan.lead[slot.date] === pid) delete plan.lead[slot.date];
+      if (pid !== current || leadInput) plan.edits = (plan.edits ?? 0) + 1;
+      dlg.close(); render(); await savePlan(); render();
+    });
+  }
+
+  function askGenerate() {
+    const lockedN = Object.keys(plan?.locked ?? {}).length;
+    if (!plan) { generate(false); return; }
+    const dlg = SM.dialog(`<form method="dialog" id="g"><div class="sm-dlg-head"><div><div class="k">Nový návrh</div><h2>Navrhnout rozpis znovu?</h2></div></div>
+      <div class="sm-dlg-body"><p style="margin:0">Aplikace znovu rozdělí směny na ${esc(E.monthLabel(month))} podle aktuálních dostupností, rotace a nastavení lidí.</p>
+      ${lockedN ? `<label class="sm-toggle"><input type="checkbox" name="keep" checked> Zachovat ruční úpravy <small>(${lockedN} ${lockedN === 1 ? 'místo' : lockedN < 5 ? 'místa' : 'míst'})</small></label>` : ''}</div>
+      <div class="sm-dlg-foot"><button type="button" class="btn small outline" data-close>Zrušit</button><button type="submit" class="btn small">Navrhnout</button></div></form>`);
+    dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('#g').addEventListener('submit', (e) => { e.preventDefault(); const keep = dlg.querySelector('[name="keep"]')?.checked ?? false; dlg.close(); generate(keep); });
+  }
+
+  async function generate(keep) {
+    const res = E.generate({ config: cfg, staff: D.staff, availability: D.availability, rotation: D.rotation, month, keep: keep ? plan : null });
+    plan = { ...res, edits: keep ? plan?.edits ?? 0 : 0, generatedAt: new Date().toISOString() };
+    render();
+    await savePlan();
+    render();
+    BC.toast('Návrh je hotový a uložený.');
+  }
+
+  async function exportExcel() {
+    const XLSX = await SM.xlsx();
+    const wb = XLSX.utils.book_new();
+    const cols = cfg.positions.filter((p) => p.count > 0 && keysInMonth.has(p.key)).flatMap((p) => Array.from({ length: p.count }, (_, i) => ({ key: p.key, idx: i, label: `${p.group} – ${p.name}${p.count > 1 ? ` ${i + 1}` : ''}` })));
+    const rows1 = [['Datum', 'Den', ...cols.map((c) => c.label), 'Vedoucí směny ZaZa']];
+    for (const d of days) {
+      rows1.push([E.fmtDay(d), E.DAY_NAMES[E.dow(d)], ...cols.map((c) => {
+        const sid = `${d}|${c.key}|${c.idx}`;
+        if (!slotIds.has(sid)) return cfg.venues[SM.pos(cfg, c.key).venue].open.includes(E.dow(d)) ? '' : 'zavřeno';
+        const pid = plan.assign[sid];
+        return pid ? staffById.get(pid)?.name ?? '' : 'NEOBSAZENO';
+      }), ev.dayInfo[d]?.lead ? staffById.get(ev.dayInfo[d].lead)?.name ?? '' : '']);
+    }
+    const ws1 = XLSX.utils.aoa_to_sheet(rows1);
+    ws1['!cols'] = [{ wch: 8 }, { wch: 5 }, ...cols.map(() => ({ wch: 18 })), { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Rozpis');
+    const rows2 = [['Jméno', 'Datum', 'Den', 'Provoz', 'Pozice', 'Od', 'Do', 'Hodin', 'Vedoucí']];
+    const byPerson = ev.slots.filter((s) => plan.assign[s.id]).sort((a, b) => (staffById.get(plan.assign[a.id])?.name ?? '').localeCompare(staffById.get(plan.assign[b.id])?.name ?? '', 'cs') || a.date.localeCompare(b.date));
+    for (const s of byPerson) {
+      const p = SM.pos(cfg, s.key);
+      rows2.push([staffById.get(plan.assign[s.id])?.name ?? '', E.fmtDay(s.date), E.DAY_NAMES[s.dow], p.group, p.name, s.from, s.to, s.hours, E.LEAD_KEYS.includes(s.key) && ev.dayInfo[s.date]?.lead === plan.assign[s.id] ? 'ano' : '']);
+    }
+    const ws2 = XLSX.utils.aoa_to_sheet(rows2);
+    ws2['!cols'] = [{ wch: 22 }, { wch: 8 }, { wch: 5 }, { wch: 13 }, { wch: 10 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 9 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Podle lidí');
+    const rows3 = [['Jméno', 'Úvazek', 'Směny', 'Hodiny', 'Víkendové dny', 'Vedoucí (dny)', 'Min. hodin', 'Max. hodin', 'Upozornění']];
+    for (const s of planned) {
+      const r = ev.people[s.id];
+      rows3.push([s.name, s.contract ?? 'DPP', r.shifts, r.hours, r.weekend, r.leads, s.minHours ?? '', s.maxHours ?? '', r.issues.map((i) => i.text).join(', ')]);
+    }
+    const ws3 = XLSX.utils.aoa_to_sheet(rows3);
+    ws3['!cols'] = [{ wch: 22 }, { wch: 8 }, { wch: 7 }, { wch: 8 }, { wch: 14 }, { wch: 13 }, { wch: 10 }, { wch: 10 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Lidé');
+    XLSX.writeFile(wb, `Smeny_${month}.xlsx`);
+  }
+
+  render();
+  if (new URLSearchParams(location.search).get('gen') === '1' && D.availability && planned.length) askGenerate();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

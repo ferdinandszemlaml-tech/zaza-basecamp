@@ -6,6 +6,7 @@ import {
 } from '../lib/auth.mjs';
 import { sendMail, passwordMail } from '../lib/mail.mjs';
 import { HttpError } from '../lib/http.mjs';
+import { smenyRoutes, availTodo } from '../lib/smeny.mjs';
 import {
   SECTIONS, POSITIONS, DEFAULT_MANDATORY, FILE_TYPES, MAX_FILE_BYTES,
   WELCOME_TOKEN_HOURS, RESET_TOKEN_HOURS, ADMIN_RESET_TOKEN_HOURS, MIN_PASSWORD,
@@ -75,7 +76,7 @@ function linkUrl(v) {
   if (!['https:', 'http:'].includes(u.protocol) || s.length > 2000) bad('Zadej celou adresu odkazu, začínající https://');
   return u.href;
 }
-const publicLink = (l) => ({ id: l.id, type: l.type ?? 'link', section: l.section, heading: l.heading, title: l.title, url: l.url ?? '', description: l.description ?? '', order: l.order ?? null });
+const publicLink = (l) => ({ id: l.id, type: l.type ?? 'link', section: l.section, heading: l.heading, title: l.title, url: l.url ?? '', description: l.description ?? '', order: l.order ?? null, mandatoryFor: l.mandatoryFor ?? [] });
 // Pořadí v rámci sekce a nadpisu: nová položka jde na konec.
 async function nextOrder(section, heading) {
   const all = [...(await loadDocs()), ...(await loadLinks())].filter((x) => x.section === section && x.heading === heading);
@@ -106,8 +107,22 @@ const saveLinks = (v) => setJSON('links', v);
 const loadReads = (uid) => getJSON(`reads/${uid}`, []);
 const saveReads = (uid, v) => setJSON(`reads/${uid}`, v);
 
-const isMandatory = (doc, user) => !isPublicDoc(doc) && doc.mandatoryFor.some((p) => user.positions.includes(p));
+const isMandatory = (doc, user) => !isPublicDoc(doc) && (doc.mandatoryFor ?? []).some((p) => user.positions.includes(p));
 const latest = (doc) => doc.versions[0];
+const isLink = (l) => (l.type ?? 'link') === 'link';
+// Vše, u čeho se eviduje otevření: nejnovější verze dokumentů a odkazy (texty ne).
+function trackables(docs, links) {
+  return [
+    ...docs.filter((d) => !isPublicDoc(d)).map((d) => ({
+      id: d.id, kind: 'doc', title: d.title, section: d.section, heading: d.heading, order: d.order, mandatoryFor: d.mandatoryFor ?? [],
+      readKey: latest(d).id, version: latest(d).version, uploadedAt: latest(d).uploadedAt,
+    })),
+    ...links.filter((l) => !isPublicDoc(l) && isLink(l)).map((l) => ({
+      id: l.id, kind: 'link', title: l.title, section: l.section, heading: l.heading, order: l.order, mandatoryFor: l.mandatoryFor ?? [],
+      readKey: l.id, version: 'odkaz', uploadedAt: l.createdAt,
+    })),
+  ];
+}
 
 async function currentUser(req) {
   const s = readSession(req.headers.get('cookie'));
@@ -120,6 +135,14 @@ async function currentUser(req) {
 async function requireUser(req) {
   const u = await currentUser(req);
   if (!u) throw new HttpError(401, 'Přihlas se prosím.');
+  return u;
+}
+const ROLES = ['employee', 'provozni', 'admin'];
+const roleOf = (v) => (ROLES.includes(v) ? v : 'employee');
+// Provozní: jako zaměstnanec, navíc karta Směny. Admin může všechno.
+async function requireShifts(req) {
+  const u = await requireUser(req);
+  if (u.role !== 'admin' && u.role !== 'provozni') throw new HttpError(403, 'Tohle může jen admin nebo provozní.');
   return u;
 }
 async function requireAdmin(req) {
@@ -165,15 +188,13 @@ function readMap(reads) {
   for (const r of reads) if (!m.has(r.versionId)) m.set(r.versionId, r.at);
   return m;
 }
-function userStats(docs, user, reads) {
+function userStats(items, user, reads) {
   const m = readMap(reads);
   let read = 0; let missing = 0; let optional = 0;
   const missingDocs = [];
-  for (const d of docs) {
-    if (isPublicDoc(d)) continue;
-    const v = latest(d);
-    if (m.has(v.id)) read++;
-    else if (isMandatory(d, user)) { missing++; missingDocs.push({ docId: d.id, title: d.title, section: d.section, version: v.version }); }
+  for (const d of items) {
+    if (m.has(d.readKey)) read++;
+    else if (isMandatory(d, user)) { missing++; missingDocs.push({ docId: d.id, kind: d.kind, title: d.title, section: d.section, version: d.version }); }
     else optional++;
   }
   return { read, missing, optional, missingDocs };
@@ -227,8 +248,8 @@ export default async (req) => {
     if (method !== 'GET' && req.headers.get('x-requested-with') !== 'basecamp') {
       throw new HttpError(403, 'Neplatný požadavek.');
     }
-    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver|lnk|fil)_/.test(p) ? ':id' : p)).join('/')}`;
-    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver|lnk|fil)_/.test(p));
+    const route = `${method} ${parts.map((p, i) => (i > 0 && /^(usr|doc|ver|lnk|fil|sme)_/.test(p) ? ':id' : p)).join('/')}`;
+    const id = parts.find((p, i) => i > 0 && /^(usr|doc|ver|lnk|fil|sme)_/.test(p));
     const handler = ROUTES[route];
     if (!handler) throw new HttpError(404, 'Neznámá adresa.');
     return await handler(req, { url, id });
@@ -279,11 +300,12 @@ const ROUTES = {
 
   'GET me': async (req) => {
     const u = await requireUser(req);
-    const [docs, reads] = await Promise.all([loadDocs(), loadReads(u.id)]);
-    const stats = userStats(docs, u, reads);
+    const [docs, links, reads, avail] = await Promise.all([loadDocs(), loadLinks(), loadReads(u.id), availTodo(u)]);
+    const stats = userStats(trackables(docs, links), u, reads);
     return json(200, {
       user: publicUser(u),
       unread: stats.missing,
+      availTodo: avail,
       meta: { sections: SECTIONS, positions: POSITIONS, defaultMandatory: DEFAULT_MANDATORY, maxFileBytes: MAX_FILE_BYTES },
     });
   },
@@ -386,10 +408,33 @@ const ROUTES = {
     return fileResponse(f, file);
   },
 
-  // ── odkazy (bez evidence čtení) ──
+  // ── odkazy a texty (odkazy se evidují při otevření přes links/:id/open) ──
   'GET links': async (req) => {
-    await requireUser(req);
-    return json(200, { links: (await loadLinks()).map(publicLink) });
+    const u = await requireUser(req);
+    const [links, reads] = await Promise.all([loadLinks(), loadReads(u.id)]);
+    const m = readMap(reads);
+    return json(200, {
+      links: links.map((l) => ({ ...publicLink(l), mandatory: isLink(l) && isMandatory(l, u), readAt: isLink(l) ? m.get(l.id) ?? null : null })),
+    });
+  },
+
+  // Otevření odkazu přes BaseCamp: zapíše seznámení a přesměruje na cílovou adresu.
+  'GET links/:id/open': async (req, { id }) => {
+    const u = await currentUser(req);
+    if (!u) return new Response(null, { status: 302, headers: { location: `/?next=${encodeURIComponent(new URL(req.url).pathname)}` } });
+    const l = (await loadLinks()).find((x) => x.id === id && isLink(x));
+    if (!l) throw new HttpError(404, 'Odkaz už neexistuje.');
+    if (!isPublicDoc(l)) {
+      const reads = await loadReads(u.id);
+      if (!reads.some((r) => r.versionId === l.id)) {
+        reads.unshift({
+          docId: l.id, versionId: l.id, kind: 'link', title: l.title, section: l.section, heading: l.heading,
+          version: 'odkaz', mandatory: isMandatory(l, u), at: new Date().toISOString(),
+        });
+        await saveReads(u.id, reads);
+      }
+    }
+    return new Response(null, { status: 302, headers: { location: l.url, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
   },
 
   // ── veřejná sekce Nový zaměstnanec (bez přihlášení, bez evidence) ──
@@ -473,6 +518,7 @@ const ROUTES = {
       description: longText(b.description, type === 'note' ? 'Text' : 'Popis'), createdAt: new Date().toISOString(),
     };
     if (type === 'note' && !link.description) bad('Vyplň text.');
+    link.mandatoryFor = type === 'link' && !PUBLIC_IDS.includes(section) ? positions(b.mandatoryFor) : [];
     link.order = await nextOrder(section, link.heading);
     const links = await loadLinks();
     links.push(link);
@@ -527,7 +573,8 @@ const ROUTES = {
       const h = text(b.heading, { max: 60, label: 'Nadpis' });
       if (h !== l.heading) { l.order = await nextOrder(l.section, h); l.heading = h; }
     }
-    if (b.url !== undefined && (l.type ?? 'link') === 'link') l.url = linkUrl(b.url);
+    if (b.url !== undefined && isLink(l)) l.url = linkUrl(b.url);
+    if (b.mandatoryFor !== undefined && isLink(l) && !isPublicDoc(l)) l.mandatoryFor = positions(b.mandatoryFor);
     if (b.description !== undefined) {
       l.description = longText(b.description, 'Popis');
       if (l.type === 'note' && !l.description) bad('Vyplň text.');
@@ -552,6 +599,7 @@ const ROUTES = {
     if (!doc) throw new HttpError(404, 'Dokument neexistuje.');
     if (b.title !== undefined) doc.title = text(b.title, { max: 120, label: 'Název' });
     if (b.description !== undefined) doc.description = longText(b.description, 'Popis');
+    if (b.mandatoryFor !== undefined && !isPublicDoc(doc)) doc.mandatoryFor = positions(b.mandatoryFor);
     if (b.heading !== undefined) {
       const h = text(b.heading, { max: 60, label: 'Nadpis' });
       if (h !== doc.heading) { doc.order = await nextOrder(doc.section, h); doc.heading = h; }
@@ -625,9 +673,10 @@ const ROUTES = {
   // ── admin: zaměstnanci ──
   'GET admin/users': async (req) => {
     await requireAdmin(req);
-    const [users, docs] = await Promise.all([loadUsers(), loadDocs()]);
+    const [users, docs, links] = await Promise.all([loadUsers(), loadDocs(), loadLinks()]);
+    const items = trackables(docs, links);
     const list = await Promise.all(users.map(async (u) => {
-      const s = userStats(docs, u, await loadReads(u.id));
+      const s = userStats(items, u, await loadReads(u.id));
       return { ...publicUser(u), missing: s.missing };
     }));
     list.sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name, 'cs'));
@@ -640,7 +689,7 @@ const ROUTES = {
     const users = await loadUsers();
     const user = {
       id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), username: username(b.username),
-      email: email(b.email), phone: phone(b.phone), role: b.role === 'admin' ? 'admin' : 'employee', positions: positions(b.positions),
+      email: email(b.email), phone: phone(b.phone), role: roleOf(b.role), positions: positions(b.positions),
       active: true, passwordHash: null, pwv: 1, createdAt: new Date().toISOString(),
     };
     if (users.some((x) => x.username === user.username)) bad('Toto uživatelské jméno už existuje.');
@@ -654,11 +703,11 @@ const ROUTES = {
 
   'GET admin/users/:id': async (req, { id }) => {
     await requireAdmin(req);
-    const [users, docs] = await Promise.all([loadUsers(), loadDocs()]);
+    const [users, docs, links] = await Promise.all([loadUsers(), loadDocs(), loadLinks()]);
     const u = users.find((x) => x.id === id);
     if (!u) throw new HttpError(404, 'Zaměstnanec neexistuje.');
     const reads = await loadReads(u.id);
-    const s = userStats(docs, u, reads);
+    const s = userStats(trackables(docs, links), u, reads);
     return json(200, { user: publicUser(u), stats: s, reads });
   },
 
@@ -676,7 +725,7 @@ const ROUTES = {
     }
     if (b.phone !== undefined) u.phone = phone(b.phone);
     if (b.positions !== undefined) u.positions = positions(b.positions);
-    if (b.role !== undefined) u.role = b.role === 'admin' ? 'admin' : 'employee';
+    if (b.role !== undefined) u.role = roleOf(b.role);
     if (b.active !== undefined && Boolean(b.active) !== u.active) {
       u.active = Boolean(b.active);
       u.pwv += 1; // odhlásí ho ze všech zařízení
@@ -710,19 +759,46 @@ const ROUTES = {
     return json(200, { ok: true, mailSent: sent, link: sent ? undefined : link });
   },
 
+  // ── admin: souhrn napříč sekcemi (kdo co nemá / podle dokumentu) ──
+  'GET admin/summary': async (req) => {
+    await requireAdmin(req);
+    const [users, allDocs, links] = await Promise.all([loadUsers(), loadDocs(), loadLinks()]);
+    const items = trackables(allDocs, links);
+    const active = users.filter((u) => u.active);
+    const readsBy = new Map(await Promise.all(active.map(async (u) => [u.id, readMap(await loadReads(u.id))])));
+    const people = active.map((u) => {
+      const m = readsBy.get(u.id);
+      const mand = items.filter((d) => isMandatory(d, u));
+      const missing = mand.filter((d) => !m.has(d.readKey));
+      return {
+        id: u.id, name: u.name, positions: u.positions, total: mand.length, done: mand.length - missing.length,
+        missing: missing.map((d) => ({ id: d.id, kind: d.kind, title: d.title, section: d.section, version: d.version, uploadedAt: d.uploadedAt })),
+      };
+    });
+    const documents = items.filter((d) => d.mandatoryFor.length).map((d) => {
+      const who = active.filter((u) => isMandatory(d, u));
+      const missing = who.filter((u) => !readsBy.get(u.id).has(d.readKey));
+      return {
+        id: d.id, kind: d.kind, title: d.title, section: d.section, heading: d.heading, version: d.version, uploadedAt: d.uploadedAt,
+        total: who.length, done: who.length - missing.length, missing: missing.map((u) => ({ id: u.id, name: u.name })),
+      };
+    });
+    return json(200, { people, documents });
+  },
+
   // ── admin: přehled seznámení ──
   'GET admin/overview': async (req, { url }) => {
     await requireAdmin(req);
     const section = url.searchParams.get('section') || SECTION_IDS[0];
     if (!SECTION_IDS.includes(section) || PUBLIC_IDS.includes(section)) bad('Neznámá sekce.');
-    const [users, allDocs] = await Promise.all([loadUsers(), loadDocs()]);
-    const docs = allDocs.filter((d) => d.section === section)
+    const [users, allDocs, links] = await Promise.all([loadUsers(), loadDocs(), loadLinks()]);
+    const docs = trackables(allDocs, links).filter((d) => d.section === section)
       .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || byOrder(a, b));
     const active = users.filter((u) => u.active);
     const rows = await Promise.all(active.map(async (u) => {
       const m = readMap(await loadReads(u.id));
       const cells = docs.map((d) => {
-        const read = m.has(latest(d).id);
+        const read = m.has(d.readKey);
         return read ? 'ok' : isMandatory(d, u) ? 'no' : 'na';
       });
       const relevant = docs.some((d) => isMandatory(d, u));
@@ -731,7 +807,7 @@ const ROUTES = {
     const columns = docs.map((d, i) => {
       const mand = rows.filter((r) => active.find((u) => u.id === r.id) && isMandatory(d, active.find((u) => u.id === r.id)));
       return {
-        id: d.id, title: d.title, heading: d.heading, version: latest(d).version, mandatoryFor: d.mandatoryFor,
+        id: d.id, kind: d.kind, title: d.title, heading: d.heading, version: d.version, mandatoryFor: d.mandatoryFor,
         done: mand.filter((r) => r.cells[i] === 'ok').length, total: mand.length,
       };
     });
@@ -739,3 +815,6 @@ const ROUTES = {
     return json(200, { section, columns, rows, totalUsers: active.length });
   },
 };
+
+// ── Směny (admin a provozní) ──
+Object.assign(ROUTES, smenyRoutes({ json, body, requireShifts, requireUser, loadUsers }));

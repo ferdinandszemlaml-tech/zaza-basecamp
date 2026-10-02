@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dostupnosti týmu · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+<style>
+.tm-group .head { display: flex; align-items: baseline; gap: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; }
+.tm-group .head span { font-weight: 500; font-size: 12px; }
+.tm-group.g-free .head { background: var(--ok-bg); color: var(--ok-text); }
+.tm-group.g-shift .head { background: var(--green-soft); color: var(--green); }
+.tm-group.g-no .head { background: var(--line-2); color: var(--muted); }
+.tm-group.g-none .head { background: var(--no-bg); color: #8A4200; }
+.tm-row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--line-2); }
+.tm-row b { flex-grow: 1; font-size: 14px; }
+.tm-row.me b::after { content: ' (ty)'; font-weight: 500; color: var(--muted); }
+.tm-row .i { font-size: 12px; color: var(--muted); text-align: right; }
+.tm-note { margin: -3px 16px 9px; padding: 4px 9px; border-radius: 8px; background: #F6E3EC; color: #6E1C44; font-size: 12px; width: fit-content; }
+.tm-table td.nm { position: sticky; left: 0; background: #fff; z-index: 1; }
+.tm-table td.me { font-weight: 700; color: var(--green); }
+.tm-table td { position: relative; }
+.tm-table td .dot { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #8C2457; }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script>
+(async () => {
+  const me = await BC.init({ active: 'dostupnost' });
+  const E = window.SmenyEngine;
+  const { esc, icon } = BC;
+  const main = document.getElementById('main');
+  const now = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Prague' }).format(new Date());
+  const shift = (m, d) => { const [y, mo] = m.split('-').map(Number); const dt = new Date(y, mo - 1 + d, 1); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`; };
+  const months = [0, 1, 2].map((d) => shift(now.slice(0, 7), d));
+  const q = new URLSearchParams(location.search).get('m');
+  const month = months.includes(q) ? q : months[0];
+  const data = await BC.api(`avail/team?month=${month}`);
+  const cfg = E.normalizeConfig(data.config);
+  const dates = E.monthDays(month);
+  let di = Math.max(0, dates.indexOf(now));
+  let view = 'day';
+  const mName = (m) => { const t = E.monthLabel(m).split(' ')[0]; return t[0].toUpperCase() + t.slice(1); };
+  const posName = (key) => { const p = cfg.positions.find((x) => x.key === key); return p ? `${p.group.replace('ZaZa Bar', 'ZaZa').replace('ZaZa Kuchyň', 'ZaZa kuchyň')} · ${p.name}` : key; };
+  const byId = new Map(data.people.map((p) => [p.id, p]));
+
+  function shiftsOn(date) {
+    const out = [];
+    for (const [sid, pid] of Object.entries(data.plan?.assign ?? {})) {
+      if (!pid || !sid.startsWith(date)) continue;
+      const key = sid.split('|')[1];
+      out.push({ pid, key, lead: data.plan.lead?.[date] === pid && E.LEAD_KEYS.includes(key) });
+    }
+    return out;
+  }
+
+  function dayHtml() {
+    const date = dates[di];
+    const i = di;
+    const shifts = shiftsOn(date);
+    const inShift = new Set(shifts.map((s) => s.pid));
+    const mine = shifts.find((s) => s.pid === me.user.id);
+    const note = (p) => (p.notes?.[i + 1] ? `<div class="tm-note">${esc(p.notes[i + 1])}</div>` : '');
+    const row = (p, info) => `<div class="tm-row ${p.id === me.user.id ? 'me' : ''}"><b>${esc(p.name)}</b><span class="i">${info}</span></div>${note(p)}`;
+    const free = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] === 'A');
+    const no = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] === 'N');
+    const other = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] && !['A', 'N'].includes(p.days[i]));
+    const none = data.people.filter((p) => !inShift.has(p.id) && !p.days?.[i]);
+    const group = (cls, title, sub, list) => (list.length ? `<div class="card tm-group ${cls}"><div class="head">${title}<span>${sub}</span></div>${list.join('')}</div>` : '');
+    return `<div class="sm-daynav"><button type="button" class="sm-nav-btn" data-day="-1" aria-label="Předchozí den" ${di === 0 ? 'disabled' : ''}>${icon('back', 18)}</button>
+        <div><h2>${esc(E.DAY_LONG[E.dow(date)])} ${E.fmtDay(date)}</h2>${mine ? `<span class="sub" style="color:var(--green)">máš směnu: ${esc(posName(mine.key))}</span>` : ''}</div>
+        <button type="button" class="sm-nav-btn" data-day="1" aria-label="Další den" ${di === dates.length - 1 ? 'disabled' : ''}>${icon('chevron', 18)}</button></div>
+      ${group('g-free', data.plan ? 'Volní a můžou' : 'Můžou', data.plan ? ' · s nimi se dá vyměnit' : ` · ${free.length}`, free.map((p) => row(p, 'ANO')))}
+      ${data.plan ? group('g-shift', 'Ve směně', ' · podle rozpisu', shifts.sort((a, b) => cfg.positions.findIndex((x) => x.key === a.key) - cfg.positions.findIndex((x) => x.key === b.key))
+        .map((s) => { const p = byId.get(s.pid) ?? { id: s.pid, name: '…', notes: {} }; return row(p, `${esc(posName(s.key))}${s.lead ? ' · vedoucí' : ''}`); })) : ''}
+      ${group('g-no', 'Nemůžou', ` · ${no.length + other.length}`, [...no, ...other].map((p) => row(p, esc(E.CODE_LABEL[p.days[i]] ?? 'NE'))))}
+      ${group('g-none', 'Nevyplnili', ` · ${none.length}`, none.map((p) => row(p, '–')))}
+      ${!data.people.length ? '<div class="card empty">Zatím nikdo dostupnost nevyplnil.</div>' : ''}`;
+  }
+
+  function tableHtml() {
+    return `<div class="card card-pad av-wrap"><table class="av-grid tm-table"><thead><tr><th></th>${dates.map((d) => `<th class="${E.isWeekend(d) ? 'we' : ''}">${E.DAY_NAMES[E.dow(d)]}<b>${Number(d.slice(8))}</b></th>`).join('')}</tr></thead><tbody>
+      ${data.people.map((p) => `<tr><td class="nm ${p.id === me.user.id ? 'me' : ''}">${esc(p.name)}</td>${dates.map((d, i) => { const c = p.days?.[i] || ''; const n = p.notes?.[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c === 'A' ? 'A' : c ? (c === 'N' ? 'N' : c) : ''}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno</span><span><span class="av-note-tag" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8C2457"></span>poznámka (najeď myší)</span></div>`;
+  }
+
+  function render() {
+    main.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Dostupnosti týmu</h1><a href="/dostupnost.html" class="small" style="font-weight:700">Moje</a></div>
+      <nav class="segmented" aria-label="Měsíc">${months.map((m, k) => `<a href="?m=${m}" class="${m === month ? 'active' : ''}"${m === month ? ' aria-current="page"' : ''}>${esc(mName(m))}${k === 0 ? ' · teď' : ''}</a>`).join('')}</nav>
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+        <span class="small muted">${data.period.status === 'open' ? `Vyplňuje se do ${E.fmtDay(data.period.deadline)}` : data.period.status === 'pending' ? `Vyplňování se otevře ${E.fmtDay(data.period.opens)}` : data.plan ? 'Rozpis platí – vidíš, kdo je volný na výměnu' : 'Po uzávěrce'}</span>
+        <nav class="segmented" style="width:fit-content" aria-label="Zobrazení"><button type="button" data-view="day" class="${view === 'day' ? 'active' : ''}">Den</button><button type="button" data-view="table" class="${view === 'table' ? 'active' : ''}">Celý měsíc</button></nav>
+      </div>
+      ${view === 'day' ? dayHtml() : tableHtml()}`;
+  }
+  main.addEventListener('click', (e) => {
+    const d = e.target.closest('[data-day]');
+    if (d) { di = Math.min(dates.length - 1, Math.max(0, di + Number(d.dataset.day))); render(); return; }
+    const v = e.target.closest('[data-view]');
+    if (v) { view = v.dataset.view; main.classList.toggle('wide', view === 'table'); render(); }
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

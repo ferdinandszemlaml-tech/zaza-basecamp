@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rozpis směn – tisk · ZaZa BaseCamp</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<style>
+@page { size: A4 landscape; margin: 10mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #1F2A28; background: #F5F3EE; font-size: 10pt; }
+.bar { position: sticky; top: 0; display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: #0B4A44; color: #fff; }
+.bar button { height: 42px; padding: 0 18px; border: 0; border-radius: 12px; background: #fff; color: #0B4A44; font: inherit; font-weight: 700; cursor: pointer; }
+.bar a { color: #CFE3DF; }
+.sheet { background: #fff; max-width: 1100px; margin: 20px auto; padding: 18px 22px; box-shadow: 0 1px 10px rgba(11,74,68,0.07); }
+h1 { margin: 0; font-family: 'Playfair Display', serif; color: #0B4A44; font-size: 18pt; }
+.sub { color: #5E5750; font-size: 9pt; margin: 2px 0 10px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { border: 0.5pt solid #D9D2C6; padding: 2.5pt 4pt; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+thead th { background: #F5F3EE; font-size: 8pt; }
+thead tr.g th { font-family: 'Playfair Display', serif; font-size: 10pt; color: #0B4A44; text-align: center; }
+td { font-size: 9pt; }
+td.d { font-weight: 700; width: 46pt; }
+tr.we td { background: #FBF1EA; }
+td.x { color: #9A928A; font-style: italic; }
+td.e { color: #A12E17; font-weight: 700; }
+b.v { display: inline-block; margin-left: 3pt; padding: 0 3pt; border-radius: 3pt; background: #0B4A44; color: #fff; font-size: 7pt; }
+.legend { margin-top: 6pt; font-size: 8pt; color: #5E5750; }
+.page2 { break-before: page; }
+@media print {
+  body { background: #fff; }
+  .bar { display: none; }
+  .sheet { box-shadow: none; margin: 0; padding: 0; max-width: none; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="bar"><button type="button" onclick="print()">Vytisknout / Uložit jako PDF</button><span>V okně tisku vyber „Uložit jako PDF“. Na šířku se nastaví samo.</span><a href="#" onclick="history.length > 1 ? history.back() : close(); return false;">Zpět</a></div>
+<div id="out" class="sheet">Načítám…</div>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  const me = await BC.api('me');
+  if (!['admin', 'provozni'].includes(me.user.role)) { location.href = '/uvod.html'; return; }
+  const E = SM.E;
+  const { esc } = BC;
+  const month = SM.currentMonth();
+  const D = await SM.load(month);
+  const out = document.getElementById('out');
+  if (!D.plan) { out.textContent = 'Na tento měsíc zatím není návrh rozpisu.'; return; }
+  const cfg = D.config;
+  const ev = E.evaluate({ config: cfg, staff: D.staff, availability: D.availability, month, plan: D.plan });
+  const slotIds = new Set(ev.slots.map((s) => s.id));
+  const keys = new Set(ev.slots.map((s) => s.key));
+  const name = (pid) => SM.shortName(D.staff.find((s) => s.id === pid)?.name ?? '?');
+  const cols = cfg.positions.filter((p) => p.count > 0 && keys.has(p.key)).flatMap((p) => Array.from({ length: p.count }, (_, i) => ({ ...p, idx: i })));
+  const groups = SM.GROUPS.map((g) => ({ g, n: cols.filter((c) => c.group === g).length })).filter((x) => x.n);
+  const rows = E.monthDays(month).map((d) => `<tr class="${E.isWeekend(d) ? 'we' : ''}"><td class="d">${E.DAY_NAMES[E.dow(d)]} ${E.fmtDay(d)}</td>${cols.map((c) => {
+    const sid = `${d}|${c.key}|${c.idx}`;
+    if (!slotIds.has(sid)) return `<td class="x">${cfg.venues[c.venue].open.includes(E.dow(d)) ? '' : 'zavřeno'}</td>`;
+    const pid = D.plan.assign[sid];
+    if (!pid) return '<td class="e">neobsazeno</td>';
+    return `<td>${esc(name(pid))}${E.LEAD_KEYS.includes(c.key) && ev.dayInfo[d]?.lead === pid ? '<b class="v">V</b>' : ''}</td>`;
+  }).join('')}</tr>`).join('');
+  const people = D.staff.filter((s) => SM.hasPositions(s) && ev.people[s.id]?.shifts).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+  out.innerHTML = `<h1>Rozpis směn · ${esc(E.monthLabel(month))}</h1>
+    <div class="sub">ZaZa Brno · vytištěno ${BC.fmtDate(new Date().toISOString())}</div>
+    <table><colgroup><col style="width:52pt">${cols.map(() => '<col>').join('')}</colgroup>
+      <thead><tr class="g"><th></th>${groups.map((g) => `<th colspan="${g.n}">${esc(g.g)}</th>`).join('')}</tr>
+      <tr><th>Den</th>${cols.map((c) => `<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+    <div class="legend"><b class="v">V</b> vedoucí směny ZaZa</div>
+    <div class="page2"><h1 style="font-size:14pt;margin-top:4pt">Souhrn lidí</h1>
+    <table style="width:auto;min-width:60%"><thead><tr><th style="width:150pt">Jméno</th><th style="width:50pt">Úvazek</th><th style="width:50pt">Směny</th><th style="width:60pt">Hodiny</th><th style="width:70pt">Víkend. dny</th><th style="width:70pt">Vedoucí</th></tr></thead>
+    <tbody>${people.map((s) => { const r = ev.people[s.id]; return `<tr><td>${esc(s.name)}</td><td>${esc(s.contract ?? 'DPP')}</td><td>${r.shifts}</td><td>${E.fmtHours(r.hours)}</td><td>${r.weekend}</td><td>${r.leads || ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+  if (document.fonts?.ready) await document.fonts.ready;
+  setTimeout(() => print(), 300);
+})().catch((e) => { document.getElementById('out').textContent = e.message; });
+</script>
+</body>
+</html>

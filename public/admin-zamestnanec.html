@@ -43,8 +43,10 @@
         <fieldset><legend>Role</legend>
           <div class="segmented" role="radiogroup" aria-label="Role">
             <button type="button" role="radio" data-role="employee" class="${u.role === 'employee' ? 'active' : ''}" aria-checked="${u.role === 'employee'}"${self ? ' disabled' : ''}>Zaměstnanec</button>
+            <button type="button" role="radio" data-role="provozni" class="${u.role === 'provozni' ? 'active' : ''}" aria-checked="${u.role === 'provozni'}"${self ? ' disabled' : ''}>Provozní</button>
             <button type="button" role="radio" data-role="admin" class="${u.role === 'admin' ? 'active' : ''}" aria-checked="${u.role === 'admin'}"${self ? ' disabled' : ''}>Admin</button>
           </div>
+          <span class="hint">Provozní vidí navíc kartu Směny. Admin vidí všechno včetně karty Admin.</span>
           ${self ? '<span class="hint">Svou vlastní roli změnit nemůžeš.</span>' : ''}
         </fieldset>
         <button class="btn" type="submit" id="save">Uložit změny</button>
@@ -58,7 +60,7 @@
       <p class="hint" style="margin:-6px 0 0">Počítá se vždy nejnovější verze každého dokumentu.</p>
 
       ${stats.missingDocs.length ? `<div class="label">Chybí přečíst</div>
-      <div class="card">${stats.missingDocs.map((d) => `<div class="item">${BC.mark('no')}<span class="item-main"><span class="item-title">${esc(d.title)} · ${esc(d.version)}</span><span class="item-sub">${esc(BC.sectionName(d.section))}</span></span></div>`).join('')}</div>` : ''}
+      <div class="card">${stats.missingDocs.map((d) => `<div class="item">${BC.mark('no')}<span class="item-main"><span class="item-title">${esc(d.title)} · ${d.kind === 'link' ? 'odkaz' : esc(d.version)}</span><span class="item-sub">${esc(BC.sectionName(d.section))}</span></span></div>`).join('')}</div>` : ''}
 
       <div class="label">Historie čtení</div>
       ${bySection.length ? `<div class="card">${bySection.map(({ s, items }) => `

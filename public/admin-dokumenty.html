@@ -64,7 +64,7 @@
       <div class="success" id="publicNote" hidden>Tahle sekce je veřejná: dokumenty uvidí kdokoliv přes tlačítko „Nový zaměstnanec“ na přihlašovací stránce. Nedávej sem nic citlivého. Čtení se neeviduje.</div>
       <fieldset id="mandBox"><legend>Povinné pro pozice</legend>
         <div class="checks" id="mand">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="mandatoryFor" value="${p.id}">${esc(p.name)}</label>`).join('')}</div>
-        <span class="hint">Předvyplněno podle sekce. Odškrtni pozice, pro které dokument povinný není.</span>
+        <span class="hint" id="mandHint">Předvyplněno podle sekce. Odškrtni pozice, pro které dokument povinný není.</span>
       </fieldset>
       <div class="field" id="noteBox"><label for="vnote">Popisek verze <span class="muted" style="font-weight:400">(nepovinné)</span></label>
         <textarea class="input textarea" id="vnote" rows="2" maxlength="3000" placeholder="Např. první verze platná od 1. 10."></textarea></div>
@@ -102,9 +102,13 @@
   }
   function fillMandatory() {
     const isPublic = meta.sections.find((s) => s.id === secSel.value)?.public;
-    document.getElementById('mandBox').hidden = Boolean(isPublic) || kind !== 'file';
+    document.getElementById('mandBox').hidden = Boolean(isPublic) || kind === 'note';
     document.getElementById('publicNote').hidden = !isPublic;
-    const def = meta.defaultMandatory[secSel.value] ?? [];
+    document.getElementById('mandHint').textContent = kind === 'link'
+      ? 'Odkaz je ve výchozím stavu nepovinný. Zaškrtni pozice, které ho musí otevřít.'
+      : 'Předvyplněno podle sekce. Odškrtni pozice, pro které dokument povinný není.';
+    // Dokument: předvyplnění podle sekce. Odkaz: bez povinnosti, dokud ji admin nezaškrtne.
+    const def = kind === 'file' ? (meta.defaultMandatory[secSel.value] ?? []) : [];
     form.querySelectorAll('[name=mandatoryFor]').forEach((c) => { c.checked = def.includes(c.value); });
   }
   secSel.addEventListener('change', () => { fillHeadings(); fillMandatory(); });
@@ -165,9 +169,11 @@
       const btn = document.getElementById('save');
       btn.disabled = true;
       try {
-        await BC.api('admin/links', { method: 'POST', body: { type: kind, section: secSel.value, heading, title: titleIn.value.trim(), url, description: desc } });
+        const mandatoryFor = kind === 'link' ? [...form.querySelectorAll('[name=mandatoryFor]:checked')].map((c) => c.value) : [];
+        await BC.api('admin/links', { method: 'POST', body: { type: kind, section: secSel.value, heading, title: titleIn.value.trim(), url, description: desc, mandatoryFor } });
         BC.toast(kind === 'note' ? 'Text je přidaný.' : 'Odkaz je přidaný.');
         titleIn.value = ''; document.getElementById('url').value = ''; document.getElementById('description').value = '';
+        fillMandatory();
         await load();
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
       finally { btn.disabled = false; }
@@ -218,10 +224,13 @@
             <button type="button" class="btn small soft" data-addver aria-expanded="false">${BC.icon('plus', 16)}Přidat verzi</button>
           </div>
           ${d.description ? `<div class="desc" style="padding-left:16px">${esc(d.description)}</div>` : ''}
-          <div class="row" style="padding:0 8px 10px 16px;gap:8px"><button type="button" class="btn small ghost" data-editdesc aria-expanded="false" style="color:var(--green);padding:0 8px;height:36px">Upravit (název, popis, nadpis)</button>${mv}</div>
+          <div class="row" style="padding:0 8px 10px 16px;gap:8px"><button type="button" class="btn small ghost" data-editdesc aria-expanded="false" style="color:var(--green);padding:0 8px;height:36px">Upravit dokument</button>${mv}</div>
           <form class="descform" hidden novalidate style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
             <div class="field"><label>Název<input class="input" name="title" maxlength="120" value="${esc(d.title)}"></label></div>
             ${headingPicker(d)}
+            ${s.public ? '' : `<fieldset><legend>Povinné pro pozice</legend>
+              <div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="mand" value="${p.id}"${d.mandatoryFor.includes(p.id) ? ' checked' : ''}>${esc(p.name)}</label>`).join('')}</div>
+              <span class="hint">Když povinnost přidáš, dokument se dotčeným zaměstnancům hned ukáže jako nepřečtený.</span></fieldset>`}
             <div class="field"><label>Popis <span class="muted" style="font-weight:400">(nepovinné)</span><textarea class="input textarea" name="description" rows="4" maxlength="3000">${esc(d.description)}</textarea></label></div>
             <button class="btn small" type="submit" style="align-self:flex-start">Uložit</button>
           </form>
@@ -250,12 +259,13 @@
           </div>`).join('')}
         </div>`;
 
+  const linkMand = (l, s) => (s.public ? ' · veřejné' : l.mandatoryFor?.length ? ` · povinné: ${l.mandatoryFor.map(BC.positionName).map(esc).join(', ')}` : ' · nepovinné');
   const linkCardAdmin = (l, s, mv) => `
         <div class="card" data-link="${esc(l.id)}" data-sec="${s.id}">
           <div class="item" style="border-top:0">
             <span class="link-ico">${BC.icon(l.type === 'note' ? 'note' : 'link', 22)}</span>
             <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span>
-            <span class="item-sub">${l.type === 'note' ? 'text' : `odkaz · ${esc(BC.linkKind(l.url))}`}</span></span>
+            <span class="item-sub">${l.type === 'note' ? 'text' : `odkaz · ${esc(BC.linkKind(l.url))}${linkMand(l, s)}`}</span></span>
             ${l.type === 'note' ? '' : `<a class="btn small soft" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">Otevřít</a>`}
             <button type="button" class="icon-btn" data-dellink="${esc(l.id)}" data-label="${esc(l.title)}" aria-label="Smazat ${esc(l.title)}">${BC.icon('trash', 20)}</button>
           </div>
@@ -265,6 +275,9 @@
             <div class="field"><label>Název<input class="input" name="title" maxlength="120" value="${esc(l.title)}"></label></div>
             ${headingPicker(l)}
             ${l.type === 'note' ? '' : `<div class="field"><label>Adresa<input class="input" name="url" type="url" value="${esc(l.url)}"></label></div>`}
+            ${l.type === 'note' || s.public ? '' : `<fieldset><legend>Povinné otevřít pro pozice</legend>
+              <div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="mand" value="${p.id}"${(l.mandatoryFor ?? []).includes(p.id) ? ' checked' : ''}>${esc(p.name)}</label>`).join('')}</div>
+              <span class="hint">Nic nezaškrtnuté = odkaz je jen pro informaci. Otevření se eviduje vždy.</span></fieldset>`}
             <div class="field"><label>${l.type === 'note' ? 'Text' : 'Popis'}<textarea class="input textarea" name="description" rows="${l.type === 'note' ? 8 : 3}" maxlength="3000">${esc(l.description)}</textarea></label></div>
             <button class="btn small" type="submit" style="align-self:flex-start">Uložit</button>
           </form>
@@ -425,14 +438,14 @@
     if (f.classList.contains('linkform')) {
       const id = f.closest('[data-link]').dataset.link;
       const b = f.querySelector('button'); b.disabled = true;
-      try { await BC.api(`admin/links/${id}`, { method: 'PATCH', body: { title: f.elements.title.value, url: f.elements.url?.value, description: f.elements.description.value, heading: pickedHeading(f) } }); BC.toast('Uloženo.'); await load(); }
+      try { await BC.api(`admin/links/${id}`, { method: 'PATCH', body: { title: f.elements.title.value, url: f.elements.url?.value, description: f.elements.description.value, heading: pickedHeading(f), ...(f.querySelector('[name=mand]') ? { mandatoryFor: [...f.querySelectorAll('[name=mand]:checked')].map((c) => c.value) } : {}) } }); BC.toast('Uloženo.'); await load(); }
       catch (ex) { BC.toast(ex.message, true); b.disabled = false; }
       return;
     }
     const docId = f.closest('[data-doc]').dataset.doc;
     if (f.classList.contains('descform')) {
       const b = f.querySelector('button'); b.disabled = true;
-      try { await BC.api(`admin/documents/${docId}`, { method: 'PATCH', body: { title: f.elements.title.value, description: f.elements.description.value, heading: pickedHeading(f) } }); BC.toast('Uloženo.'); await load(); }
+      try { await BC.api(`admin/documents/${docId}`, { method: 'PATCH', body: { title: f.elements.title.value, description: f.elements.description.value, heading: pickedHeading(f), ...(f.querySelector('[name=mand]') ? { mandatoryFor: [...f.querySelectorAll('[name=mand]:checked')].map((c) => c.value) } : {}) } }); BC.toast('Uloženo.'); await load(); }
       catch (ex) { BC.toast(ex.message, true); b.disabled = false; }
       return;
     }

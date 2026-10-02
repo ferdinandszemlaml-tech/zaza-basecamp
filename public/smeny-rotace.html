@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rotace pizzařů · Směny · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc, icon } = BC;
+  const month = SM.currentMonth();
+  const D = await SM.load(month);
+  const cfg = D.config;
+  const main = document.getElementById('main');
+  const days = E.monthDays(month);
+  const weeks = E.monthWeeks(month);
+  let venue = new URLSearchParams(location.search).get('v') === 'little' ? 'little' : 'zaza';
+  const COLORS = [['#E7F2EF', '#BFDAD3'], ['#EAF0FA', '#C3D3EC'], ['#FBEFE6', '#EBCFB8'], ['#F3ECF8', '#D9C6E8']];
+  const VNAME = { zaza: 'ZaZa Kuchyň', little: 'Little ZaZa' };
+
+  const members = () => D.staff.filter((s) => s.active && s.rot?.[venue] && s.positions?.[`${venue}-pizzar`]);
+  const avOk = (pid, date) => {
+    if (!D.availability) return true;
+    const s = E.normalizeStaff(D.staff.find((x) => x.id === pid));
+    return Boolean(E.tierFor(s, `${venue}-pizzar`, E.codeFor(D.availability, pid, date)));
+  };
+
+  function dayCell(w, date, ms) {
+    const inMonth = days.includes(date);
+    const p = SM.pos(cfg, `${venue}-pizzar`);
+    const hours = E.rangeHours(E.isWeekend(date) ? p.we : p.wd);
+    const label = `<span class="d">${E.fmtDay(date)}</span>`;
+    if (!cfg.venues[venue].open.includes(E.dow(date))) return { html: `<div class="rot-cell off ${inMonth ? '' : 'out'}">${label}<b>zavřeno</b></div>` };
+    const type = E.rotationType(cfg, venue, date);
+    if (!type) return { html: `<div class="rot-cell off ${inMonth ? '' : 'out'}">${label}<b>mimo rotaci</b></div>` };
+    const wk = D.rotation?.[w] ?? {};
+    const own = ms.filter((m) => wk[m.id] === type);
+    if (!own.length) return { html: `<div class="rot-cell none ${inMonth ? '' : 'out'}">${label}<b>Nikdo</b><span class="s">nikdo nemá ${type} týden</span></div>` };
+    const main = own.find((m) => avOk(m.id, date));
+    const color = (m) => COLORS[ms.indexOf(m) % COLORS.length];
+    if (main) return { html: `<div class="rot-cell ${inMonth ? '' : 'out'}" style="background:${color(main)[0]};border-color:${color(main)[1]}">${label}<b>${esc(SM.shortName(main.name))}</b><span class="s">${type} · ${SM.fmtH(hours)}</span></div>`, who: main.id, hours, inMonth };
+    const cover = ms.find((m) => !own.includes(m) && wk[m.id] !== type && avOk(m.id, date));
+    const missing = own.map((m) => SM.shortName(m.name)).join(', ');
+    if (cover) return { html: `<div class="rot-cell conflict ${inMonth ? '' : 'out'}">${label}<b>${esc(SM.shortName(cover.name))}</b><span class="s">${esc(missing)} nemůže · zaskakuje</span></div>`, who: cover.id, hours, inMonth };
+    return { html: `<div class="rot-cell none ${inMonth ? '' : 'out'}">${label}<b>Nikdo</b><span class="s">${esc(missing)} nemůže</span></div>` };
+  }
+
+  const weekLabel = (w) => `${E.fmtDay(w)}–${E.fmtDay(E.addDays(w, 6))}`;
+
+  function render() {
+    const r = cfg.rotation[venue];
+    const ms = members();
+    const dayBtns = (kind) => `<div class="sm-days ${kind === 'S' ? 's' : ''}" role="group" aria-label="Dny ${kind} týdne">${E.DAY_NAMES.map((n, i) => `<button type="button" data-def="${kind}" data-d="${i}" aria-pressed="${r[kind].includes(i)}">${n}</button>`).join('')}</div>`;
+    const totals = Object.fromEntries(ms.map((m) => [m.id, { n: 0, h: 0 }]));
+    let rowsHtml = '';
+    for (const w of weeks) {
+      const cells = Array.from({ length: 7 }, (_, i) => dayCell(w, E.addDays(w, i), ms));
+      for (const c of cells) if (c.who && c.inMonth && totals[c.who]) { totals[c.who].n++; totals[c.who].h += c.hours; }
+      rowsHtml += `<div class="rot-row"><div class="rot-week"><b>${esc(weekLabel(w))}</b>
+        ${ms.map((m) => `<div class="rot-member"><span>${esc(SM.shortName(m.name))}</span><span class="sm-seg">${['L', 'S', '-'].map((v) => `<label><input type="radio" name="${esc(w)}|${esc(m.id)}" value="${v}" ${(D.rotation?.[w]?.[m.id] ?? '') === v ? 'checked' : ''}><span>${v === '-' ? '–' : v}</span></label>`).join('')}</span></div>`).join('')}
+        </div>${cells.map((c) => c.html).join('')}</div>`;
+    }
+    main.innerHTML = `${SM.tabs('rotace', month)}
+      <div class="sm-head">
+        <div class="sm-month"><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, -1)}&v=${venue}" aria-label="Předchozí měsíc">${icon('back', 18)}</a>
+          <h1>${esc(SM.monthTitle(month))}</h1><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, 1)}&v=${venue}" aria-label="Další měsíc">${icon('chevron', 18)}</a></div>
+        <div class="sm-actions">${r.enabled && ms.length ? '<button type="button" class="btn small outline" id="fill">Doplnit střídání do konce měsíce</button>' : ''}</div>
+      </div>
+      <div class="card card-pad stack" style="gap:14px">
+        <div class="row" style="flex-wrap:wrap;gap:16px">
+          <nav class="segmented" style="width:fit-content" aria-label="Provoz">${['zaza', 'little'].map((v) => `<button type="button" data-venue="${v}" class="${v === venue ? 'active' : ''}" aria-pressed="${v === venue}">${VNAME[v]}${cfg.rotation[v].enabled ? '' : ' · vypnuto'}</button>`).join('')}</nav>
+          <label class="row small" style="gap:8px;font-weight:700;color:var(--green)"><input type="checkbox" id="enabled" ${r.enabled ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--green)">Rotace zapnutá</label>
+        </div>
+        ${r.enabled ? `<div class="row" style="flex-wrap:wrap;gap:22px"><div class="row" style="gap:10px"><b class="small">L týden</b>${dayBtns('L')}</div><div class="row" style="gap:10px"><b class="small">S týden</b>${dayBtns('S')}</div></div>
+          <span class="hint">Kliknutím na den ho přesuneš do L nebo S týdne. Den, který není ani v jednom, pizzaře plánuje aplikace podle dostupností.</span>`
+          : '<div class="sm-info">Rotace je v tomto provozu vypnutá. Pizzaři se plánují podle dostupností a priorit jako ostatní pozice.</div>'}
+      </div>
+      ${!r.enabled ? '' : !ms.length ? `<div class="card card-pad empty">V ${esc(VNAME[venue])} zatím nikdo nejede rotaci. U pizzařů ji zapneš v záložce <a href="/smeny-lide.html">Zaměstnanci</a> (zaškrtnutí „Jede rotaci L / S“).</div>` : `
+      <div class="card sm-grid" style="padding:10px 16px 14px">
+        <div class="rot-row head"><span class="small muted" style="align-self:end;font-weight:700">Týden · L / S / – volno</span>${E.DAY_NAMES.map((n, i) => {
+          const t = r.L.includes(i) ? 'L' : r.S.includes(i) ? 'S' : '';
+          return `<div class="sm-dayhead ${i >= 5 ? 'we' : ''}"><b>${n}</b><span>${t ? `${t} týden` : '—'}</span></div>`;
+        }).join('')}</div>
+        ${rowsHtml}
+      </div>
+      <div class="sm-chips">${ms.map((m, i) => `<span class="sm-alert" style="background:#fff;box-shadow:var(--shadow);color:var(--ink)"><i style="width:14px;height:14px;border-radius:4px;background:${COLORS[i % COLORS.length][1]};display:inline-block"></i>${esc(m.name)} · ${totals[m.id].n} směn · ${SM.fmtH(totals[m.id].h)} za měsíc</span>`).join('')}
+        <span class="small muted">Oranžově: pizzař má v dostupnostech NE a zaskakuje druhý. Červeně: ten den nikdo nejde.</span></div>`}`;
+  }
+
+  async function saveRotation(weeksPatch) {
+    try {
+      const r = await BC.api('smeny/rotation', { method: 'PUT', body: { weeks: weeksPatch } });
+      D.rotation = r.rotation;
+    } catch (ex) { BC.toast(ex.message, true); }
+    render();
+  }
+
+  main.addEventListener('change', async (e) => {
+    if (e.target.id === 'enabled') {
+      cfg.rotation[venue].enabled = e.target.checked;
+      try { await SM.saveConfig(cfg); } catch (ex) { BC.toast(ex.message, true); }
+      render(); return;
+    }
+    if (e.target.type === 'radio' && e.target.name.includes('|')) {
+      const [w, pid] = e.target.name.split('|');
+      await saveRotation({ [w]: { [pid]: e.target.value } });
+    }
+  });
+  main.addEventListener('click', async (e) => {
+    const v = e.target.closest('[data-venue]');
+    if (v) { venue = v.dataset.venue; history.replaceState(null, '', `?m=${month}&v=${venue}`); render(); return; }
+    const d = e.target.closest('[data-def]');
+    if (d) {
+      const r = cfg.rotation[venue];
+      const kind = d.dataset.def; const other = kind === 'L' ? 'S' : 'L'; const day = Number(d.dataset.d);
+      if (r[kind].includes(day)) r[kind] = r[kind].filter((x) => x !== day);
+      else { r[kind] = [...r[kind], day].sort(); r[other] = r[other].filter((x) => x !== day); }
+      try { await SM.saveConfig(cfg); } catch (ex) { BC.toast(ex.message, true); }
+      render(); return;
+    }
+    if (e.target.closest('#fill')) {
+      const patch = {};
+      for (const m of members()) {
+        let last = null;
+        for (let w = E.addDays(weeks[0], -28); w < weeks[0]; w = E.addDays(w, 7)) { const v = D.rotation?.[w]?.[m.id]; if (v === 'L' || v === 'S') last = v; }
+        for (const w of weeks) {
+          const v = D.rotation?.[w]?.[m.id];
+          if (v === 'L' || v === 'S') { last = v; continue; }
+          if (v === '-' || !last) continue;
+          last = last === 'L' ? 'S' : 'L';
+          (patch[w] ??= {})[m.id] = last;
+        }
+      }
+      if (!Object.keys(patch).length) { BC.toast('Není co doplnit – nastav aspoň jeden týden L nebo S.'); return; }
+      await saveRotation(patch);
+      BC.toast('Střídání doplněno.');
+    }
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

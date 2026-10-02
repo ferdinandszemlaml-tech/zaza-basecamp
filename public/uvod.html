@@ -28,13 +28,16 @@
   const params = new URLSearchParams(location.search);
   // Výchozí sekce: z adresy, jinak první sekce, kde má zaměstnanec něco povinného.
   const mandatory = documents.filter((d) => d.mandatory);
-  const firstOwn = sections.find((s) => mandatory.some((d) => d.section === s.id && d.section !== 'spolecne'));
+  const mandLinks = allLinks.filter((l) => l.mandatory);
+  const firstOwn = sections.find((s) => [...mandatory, ...mandLinks].some((d) => d.section === s.id && d.section !== 'spolecne'));
   let current = sections.some((s) => s.id === params.get('s')) ? params.get('s') : (firstOwn ?? sections[0]).id;
 
-  const done = mandatory.filter((d) => d.versions[0].readAt).length;
   const unread = mandatory.filter((d) => !d.versions[0].readAt);
-  const pct = mandatory.length ? Math.round((done / mandatory.length) * 100) : 100;
-  const n = unread.length;
+  const unreadLinks = mandLinks.filter((l) => !l.readAt);
+  const total = mandatory.length + mandLinks.length;
+  const n = unread.length + unreadLinks.length;
+  const done = total - n;
+  const pct = total ? Math.round((done / total) * 100) : 100;
   const countText = n === 0 ? 'Všechno povinné máš přečtené.' : `Máš <strong>${n} ${n === 1 ? 'dokument' : n < 5 ? 'dokumenty' : 'dokumentů'}</strong> k přečtení.`;
 
   function versionRow(d, v, i) {
@@ -71,9 +74,9 @@
 
   document.getElementById('main').innerHTML = `
     <div class="stack" style="gap:6px"><h1>Ahoj, ${esc(BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p></div>
-    ${mandatory.length ? `<div class="card card-pad summary">
+    ${total ? `<div class="card card-pad summary">
       <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Přečteno povinných dokumentů"><div style="width:${pct}%"></div></div>
-      <span class="small" style="font-weight:700;color:var(--green);white-space:nowrap">${done} z ${mandatory.length} povinných</span>
+      <span class="small" style="font-weight:700;color:var(--green);white-space:nowrap">${done} z ${total} povinných</span>
     </div>` : ''}
     ${n ? `<div class="label">K přečtení</div>
     <div class="stack">${unread.map((d) => { const v = d.versions[0]; const multi = v.files.length > 1; return `
@@ -85,7 +88,16 @@
           <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.filesLabel(v)}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}
         </span>
         ${BC.icon('chevron', 20, 'var(--green)')}
-      </a>`; }).join('')}</div>` : ''}
+      </a>`; }).join('')}${unreadLinks.map((l) => `
+      <a class="card item new" data-row href="/api/links/${esc(l.id)}/open" target="_blank" rel="noopener" data-open="${esc(l.id)}" style="border-top:0">
+        ${BC.mark('no')}
+        <span class="item-main">
+          <span class="sec" data-sec="${esc(l.section)}">${esc(BC.sectionName(l.section))}</span>
+          <span class="item-title" style="font-size:16px">${esc(l.title)}</span>
+          <span class="item-sub">Odkaz · ${esc(BC.linkKind(l.url))}</span>
+        </span>
+        ${BC.icon('external', 20, 'var(--green)')}
+      </a>`).join('')}</div>` : ''}
     <div class="sec-head"><h2 id="secTitle">Dokumenty</h2></div>
     <nav class="filter" aria-label="Sekce" id="secFilter">${sections.map((s) => `<a href="?s=${s.id}" data-s="${s.id}" data-sec="${s.id}">${esc(s.name)}</a>`).join('')}</nav>
     <div id="secBody" class="stack" style="gap:12px"></div>

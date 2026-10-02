@@ -24,6 +24,13 @@ export async function deleteJSON(key) {
   await dataStore().delete(key);
 }
 
+// Klíče se zadaným začátkem (např. všechny odpovědi jednoho měsíce).
+export async function listKeys(prefix) {
+  if (useMemory()) return [...mem.data.keys()].filter((k) => k.startsWith(prefix));
+  const { blobs } = await dataStore().list({ prefix });
+  return blobs.map((b) => b.key);
+}
+
 export async function getFile(key) {
   if (useMemory()) return mem.files.get(key) ?? null;
   const res = await fileStore().getWithMetadata(key, { type: 'arrayBuffer' });

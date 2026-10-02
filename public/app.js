@@ -19,6 +19,8 @@ const BC = (() => {
     link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>',
     external: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
     team: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.6-5.5 6.5-5.5s5.5 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18.5 14.8c1.6.8 2.6 2.5 3 5.2"/>',
+    calcheck: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="m9 15 2 2 4-4"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     phone: '<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>',
   };
   const icon = (name, size = 20, color = 'currentColor') =>
@@ -78,12 +80,24 @@ const BC = (() => {
         <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span></span></span>
       <div class="desc" style="padding-left:68px">${esc(l.description)}</div>
     </div>`;
-  const linkCard = (l) => l.type === 'note' ? noteCard(l) : `<a class="card link-card" data-sec="${esc(l.section)}" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+  // Po přihlášení jde odkaz přes /api/links/…/open, aby se zapsalo otevření.
+  // Na veřejné stránce (bez readAt) vede rovnou na adresu.
+  const linkCard = (l) => {
+    if (l.type === 'note') return noteCard(l);
+    const tracked = 'readAt' in l;
+    const status = !tracked ? '' : l.readAt ? 'ok' : l.mandatory ? 'no' : '';
+    const text = status === 'ok' ? ` · Otevřeno ${fmtDate(l.readAt)}` : status === 'no' ? ' · Povinné, zatím neotevřeno' : '';
+    const attrs = tracked
+      ? `href="/api/links/${esc(l.id)}/open" target="_blank" rel="noopener" data-row data-open="${esc(l.id)}"`
+      : `href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"`;
+    return `<a class="card link-card${status === 'no' ? ' new' : ''}" id="lnk-${esc(l.id)}" data-sec="${esc(l.section)}" ${attrs}>
       <span class="link-row"><span class="link-ico">${icon('link', 22)}</span>
-        <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span><span class="item-sub">Odkaz · ${esc(linkKind(l.url))}</span></span>
+        <span class="item-main"><span class="item-title" style="font-size:16px">${esc(l.title)}</span><span class="item-sub">Odkaz · ${esc(linkKind(l.url))}${text}</span></span>
+        ${status ? mark(status) : ''}
         <span class="link-go" aria-hidden="true">${icon('external', 20)}</span></span>
       ${l.description ? `<span class="desc">${esc(l.description)}</span>` : ''}
     </a>`;
+  };
   const filesLabel = (v) => {
     const n = v.files?.length ?? 1;
     return n > 1 ? `${n} ${n < 5 ? 'soubory' : 'souborů'}` : fileType(v.files?.[0]?.ext ?? v.ext);
@@ -111,11 +125,14 @@ const BC = (() => {
 
   function renderShell(me, active) {
     const admin = me.user.role === 'admin';
+    const shifts = admin || me.user.role === 'provozni';
     const items = [
       { id: 'uvod', href: '/uvod.html', label: 'Úvod', icon: 'home', badge: me.unread },
       { id: 'tym', href: '/tym.html', label: 'Tým', icon: 'team' },
+      { id: 'dostupnost', href: '/dostupnost.html', label: 'Dostupnost', icon: 'calcheck', badge: me.availTodo?.length ?? 0 },
       { id: 'profil', href: '/profil.html', label: 'Profil', icon: 'user' },
       ...(admin ? [{ id: 'admin', href: '/admin-dokumenty.html', label: 'Admin', icon: 'shield' }] : []),
+      ...(shifts ? [{ id: 'smeny', href: '/smeny.html', label: 'Směny', icon: 'calendar' }] : []),
     ];
     const badge = (n) => (n ? `<span class="badge" aria-label="${n} nepřečtených">${n}</span>` : '');
     const header = document.createElement('header');
@@ -129,13 +146,28 @@ const BC = (() => {
     tabbar.setAttribute('aria-label', 'Hlavní menu');
     tabbar.innerHTML = items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}>${icon(i.icon, 24)}${i.label}${badge(i.badge)}</a>`).join('');
     document.body.append(tabbar);
+    // Úvod: připomínka nevyplněné dostupnosti (místo e-mailu)
+    const todo = me.availTodo?.[0];
+    if (active === 'uvod' && todo) {
+      const [y, m] = todo.month.split('-').map(Number);
+      const mon = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'][m - 1];
+      const [dy, dm, dd] = todo.deadline.split('-').map(Number);
+      const note = document.createElement('div');
+      note.className = 'bc-main bc-notice';
+      note.innerHTML = `<a class="card avail-banner${todo.reminded ? ' strong' : ''}" href="/dostupnost.html?m=${esc(todo.month)}">
+        <span class="link-ico">${icon('calcheck', 22)}</span>
+        <span class="item-main"><span class="item-title">${todo.reminded ? 'Provozní tě žádá o vyplnění dostupnosti' : 'Vyplň dostupnost'} na ${mon} ${y}</span>
+        <span class="item-sub">Uzávěrka ${dd}. ${dm}. ${dy} · zabere to minutu</span></span><span class="link-go">${icon('chevron', 20)}</span></a>`;
+      document.querySelector('.bc-main')?.before(note);
+    }
   }
 
   // Každá chráněná stránka: ověří přihlášení, případně admina, vykreslí hlavičku a menu.
-  async function init({ active, admin = false } = {}) {
+  async function init({ active, admin = false, shifts = false } = {}) {
     const me = await api('me');
     meta = me.meta;
     if (admin && me.user.role !== 'admin') { location.href = '/uvod.html'; throw new Error('Jen pro admina'); }
+    if (shifts && !['admin', 'provozni'].includes(me.user.role)) { location.href = '/uvod.html'; throw new Error('Jen pro admina nebo provozního'); }
     renderShell(me, active);
     return me;
   }

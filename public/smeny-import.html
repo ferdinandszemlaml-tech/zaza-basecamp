@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nahrání z Excelu · Směny · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc, icon } = BC;
+  const month = SM.currentMonth();
+  let D = await SM.load(month);
+  const main = document.getElementById('main');
+  const days = E.monthDays(month);
+  // Rozpracovaný import (ještě neuložený): { fileName, sheet, sheets, wb, rows: [{nick, codes, pid}] }
+  let draft = null;
+
+  const matchPid = (nick) => D.staff.find((s) => E.nickMatch(s.nick, nick))?.id ?? null;
+  const current = () => draft ?? (D.excel ? { fileName: D.excel.fileName, sheet: D.excel.sheet, rows: D.excel.rows.map((r) => ({ ...r, pid: r.pid ?? matchPid(r.nick) })), saved: true } : null);
+
+  function readSheet(name) {
+    const rows = draft.XLSX.utils.sheet_to_json(draft.wb.Sheets[name], { header: 1, raw: true, defval: null });
+    draft.sheet = name;
+    draft.rows = E.parseSheetRows(rows, month).map((r) => ({ ...r, pid: matchPid(r.nick) }));
+  }
+
+  async function loadFile(file) {
+    if (!/\.(xlsx|xls|ods)$/i.test(file.name)) { BC.toast('Nahraj prosím soubor Excelu (.xlsx).', true); return; }
+    const XLSX = await SM.xlsx();
+    const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+    draft = { fileName: file.name, wb, XLSX, sheets: wb.SheetNames };
+    const want = E.fold(E.sheetNameFor(month));
+    const sheet = wb.SheetNames.find((n) => E.fold(n) === want) ?? wb.SheetNames.find((n) => E.fold(n).startsWith(want.split(' ')[0])) ?? wb.SheetNames[0];
+    readSheet(sheet);
+    if (E.fold(sheet) !== want) BC.toast(`List „${E.sheetNameFor(month)}“ jsem nenašel – vyber ho prosím ručně.`, true);
+    render();
+  }
+
+  function render() {
+    const cur = current();
+    const rows = cur?.rows ?? [];
+    const matched = rows.filter((r) => r.pid);
+    const unmatched = rows.filter((r) => !r.pid);
+    const blank = rows.filter((r) => r.pid && !r.codes.some(Boolean));
+    const inTable = new Set(matched.map((r) => r.pid));
+    const missing = D.staff.filter((s) => s.active && SM.hasPositions(s) && !inTable.has(s.id));
+    const usedPids = new Set(matched.map((r) => r.pid));
+    const head = days.map((d) => `<th class="${E.isWeekend(d) ? 'we' : ''}">${E.DAY_NAMES[E.dow(d)]}<b>${Number(d.slice(8))}</b></th>`).join('');
+    const name = (pid) => D.staff.find((s) => s.id === pid)?.name ?? '';
+    main.innerHTML = `${SM.tabs('dostupnosti', month)}
+      <div class="sm-head">
+        <div class="sm-month"><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, -1)}" aria-label="Předchozí měsíc">${icon('back', 18)}</a>
+          <h1>${esc(SM.monthTitle(month))}</h1><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, 1)}" aria-label="Další měsíc">${icon('chevron', 18)}</a></div>
+        <div class="stack" style="gap:2px"><b>Záloha: nahrání z Excelu</b><a class="small" href="/smeny-dostupnosti.html?m=${month}" style="font-weight:700">← zpět na dostupnosti z BaseCampu</a></div>
+        <div class="sm-actions">${draft ? '<button type="button" class="btn small" id="save">Uložit dostupnosti</button>' : D.excel ? `<a class="btn small" href="/smeny.html?m=${month}&gen=1">Navrhnout rozpis</a>` : ''}</div>
+      </div>
+      <label class="drop" id="drop">
+        <span class="link-ico" style="background:var(--ok-bg);color:var(--ok)">${icon('upload', 22)}</span>
+        <span class="item-main"><span class="item-title">${cur ? esc(cur.fileName || 'Tabulka dostupností') : 'Nahraj tabulku dostupností'}</span>
+          <span class="item-sub">${draft ? 'Načteno, zatím neuloženo' : D.excel ? `Uloženo ${BC.fmtDate(D.excel.importedAt)} · pro novou verzi stáhni tabulku z cloudu jako .xlsx a přetáhni ji sem` : 'Stáhni tabulku z cloudu jako .xlsx a přetáhni ji sem, nebo klikni a vyber soubor'}</span></span>
+        <span class="btn small outline">Vybrat soubor</span>
+        <input type="file" id="file" accept=".xlsx,.xls,.ods" class="sr-only">
+      </label>
+      ${draft?.wb ? `<div class="row" style="flex-wrap:wrap"><label for="sheet" class="small" style="font-weight:700">List v tabulce</label>
+        <select class="input" id="sheet" style="width:auto;height:44px;font-weight:700">${draft.sheets.map((s) => `<option ${s === draft.sheet ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>` : ''}
+      ${cur ? `<div class="sm-chips">
+        <span class="sm-alert green">${matched.length} ${matched.length === 1 ? 'člověk spárován' : matched.length < 5 ? 'lidé spárováni' : 'lidí spárováno'}</span>
+        ${blank.length ? `<span class="sm-alert orange">Nic nevyplnili: ${esc(blank.map((r) => r.nick).join(', '))}</span>` : ''}
+        ${missing.length ? `<span class="sm-alert orange">V tabulce chybí: ${esc(missing.map((s) => SM.shortName(s.name)).join(', '))}</span>` : ''}
+      </div>
+      ${unmatched.length ? `<div class="card card-pad stack"><b>Neznámá jména v tabulce – komu patří?</b>
+        <span class="hint">Platí jen pro lidi, kteří dostupnost nevyplnili přímo v BaseCampu. Po výběru se řádek hned spáruje. Při uložení se jméno zapíše k zaměstnanci jako „Jméno v tabulce“, příště se spáruje samo. Řádky, které nikomu nepatří, nech být.</span>
+        ${unmatched.map((r) => `<div class="row" style="flex-wrap:wrap"><span class="sm-chip" style="font-size:13px;padding:6px 10px">${esc(r.nick)}</span>→
+          <select class="input" data-map="${esc(r.nick)}" style="width:auto;min-width:240px;height:42px"><option value="">nikomu</option>${D.staff.filter((s) => !usedPids.has(s.id)).map((s) => `<option value="${esc(s.id)}">${esc(s.name)}${s.nick ? ` (${esc(s.nick)})` : ''}</option>`).join('')}</select></div>`).join('')}
+      </div>` : ''}
+      <div class="card card-pad av-wrap"><table class="av-grid"><thead><tr><th></th>${head}</tr></thead><tbody>
+        ${rows.map((r) => `<tr><td class="nm"><b>${esc(r.nick)}</b>${r.mapped ? ' <span class="sm-chip acc">nově</span>' : ''}${r.pid ? `<div class="small muted">${esc(SM.shortName(name(r.pid)))}</div>` : '<div class="small" style="color:#A12E17">nespárováno</div>'}</td>${days.map((d, i) => { const c = r.codes[i] ?? ''; return `<td class="c-${c || '_'}" title="${esc(E.CODE_LABEL[c])}">${c === 'A' ? 'A' : c === 'N' ? 'N' : c}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="sm-legend">${[['A', 'ANO – může'], ['L', 'LITTLE – jen Little'], ['P', 'POMOC – jen výpomoc'], ['N', 'NE'], ['D', 'Dovolená'], ['Z', 'Zavřeno'], ['', 'nevyplněno = nemůže']].map(([c, l]) => `<span><i class="c-${c || '_'}" style="border:1px solid"></i>${esc(l)}</span>`).join('')}</div>`
+      : '<div class="card card-pad empty">Pro tento měsíc zatím nejsou nahrané žádné dostupnosti.</div>'}`;
+  }
+
+  async function save() {
+    const btn = document.getElementById('save');
+    btn.disabled = true;
+    try {
+      // ruční přiřazení neznámých jmen se uloží k zaměstnancům
+      for (const row of draft.rows.filter((r) => r.mapped && r.pid)) {
+        const s = D.staff.find((x) => x.id === row.pid);
+        await BC.api(`smeny/staff/${row.pid}`, { method: 'PUT', body: { ...s, nick: row.nick.toUpperCase(), planActive: s.planActive !== false } });
+      }
+      const people = {};
+      for (const r of draft.rows) if (r.pid) people[r.pid] = r.codes;
+      await BC.api(`smeny/availability?month=${month}`, { method: 'PUT', body: { fileName: draft.fileName, sheet: draft.sheet, people, rows: draft.rows.map(({ nick, pid, codes }) => ({ nick, pid, codes })) } });
+      draft = null;
+      D = await SM.load(month);
+      render();
+      BC.toast('Dostupnosti uložené. Teď můžeš navrhnout rozpis.');
+    } catch (ex) { BC.toast(ex.message, true); btn.disabled = false; }
+  }
+
+  main.addEventListener('change', (e) => {
+    if (e.target.id === 'file' && e.target.files[0]) loadFile(e.target.files[0]).catch((ex) => BC.toast(ex.message, true));
+    if (e.target.id === 'sheet') { readSheet(e.target.value); render(); }
+    if (e.target.dataset.map !== undefined) {
+      if (!draft) { const cur = current(); draft = { fileName: cur.fileName, sheet: cur.sheet, rows: cur.rows, sheets: [cur.sheet], wb: null }; }
+      const row = draft.rows.find((r) => r.nick === e.target.dataset.map);
+      if (row && e.target.value) { row.pid = e.target.value; row.mapped = true; render(); }
+    }
+  });
+  main.addEventListener('click', (e) => { if (e.target.closest('#save')) save(); });
+  main.addEventListener('dragover', (e) => { const d = e.target.closest('#drop'); if (d) { e.preventDefault(); d.classList.add('over'); } });
+  main.addEventListener('dragleave', (e) => e.target.closest('#drop')?.classList.remove('over'));
+  main.addEventListener('drop', (e) => {
+    const d = e.target.closest('#drop');
+    if (!d) return;
+    e.preventDefault(); d.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) loadFile(f).catch((ex) => BC.toast(ex.message, true));
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

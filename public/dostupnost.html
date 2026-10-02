@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moje dostupnost · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+<style>
+.av-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.av-months a { text-decoration: none; padding: 8px 4px; border-radius: 12px; background: var(--cream-2); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.av-months a b { font-size: 14px; color: var(--ink-2); }
+.av-months a span { font-size: 11px; color: var(--muted); }
+.av-months a.pending { background: #fff; border: 1px dashed var(--field); }
+.av-months a.active { background: var(--green); }
+.av-months a.active b { color: #fff; }
+.av-months a.active span { color: #CFE3DF; }
+.av-brushes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.av-brushes button { height: 52px; border-radius: 12px; border: 2px solid transparent; font: inherit; font-weight: 700; font-size: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; cursor: pointer; }
+.av-brushes button small { font-size: 10px; font-weight: 600; }
+.av-brushes button[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 2px #fff inset; }
+.b-A { background: var(--ok-bg); color: var(--ok-text); }
+.b-N { background: var(--line-2); color: var(--muted); }
+.b-X { background: #fff; color: var(--muted); border: 1.5px dashed var(--field) !important; }
+.b-X[aria-pressed="true"] { border: 2px solid var(--green) !important; }
+.b-T { background: #F6E3EC; color: #8C2457; }
+.av-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.av-cal .dn { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding-bottom: 2px; }
+.av-cal .dn.we { color: #8A4200; }
+.av-day { position: relative; height: 50px; border-radius: 10px; border: 1.5px solid var(--line); background: #fff; font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--ink); }
+.av-day b { font-size: 15px; }
+.av-day span { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; }
+.av-day.c-A { background: var(--ok-bg); border-color: #BFE0CC; }
+.av-day.c-A span { color: var(--ok-text); }
+.av-day.c-N { background: var(--line-2); border-color: #E3DDD2; }
+.av-day.c-N span { color: var(--muted-2); }
+.av-day.c-_ { border-style: dashed; border-color: var(--field); }
+.av-day.we:not(.c-A):not(.c-N) { background: #FFFBF7; }
+.av-day .dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: #8C2457; }
+.av-day:disabled { cursor: default; }
+.av-notes .item { padding: 10px 14px; }
+.av-note-tag { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #8C2457; }
+.av-save { text-align: center; font-size: 12px; color: var(--muted); min-height: 18px; }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'dostupnost' });
+  const E = window.SmenyEngine;
+  const { esc, icon } = BC;
+  const main = document.getElementById('main');
+  const q = new URLSearchParams(location.search).get('m');
+  const data = await BC.api(`avail/me${q ? `?month=${encodeURIComponent(q)}` : ''}`);
+  const P = data.period;
+  const month = P.month;
+  const n = data.days;
+  let days = data.response?.days?.length === n ? [...data.response.days] : Array(n).fill('');
+  let notes = { ...(data.response?.notes ?? {}) };
+  let done = Boolean(data.response?.done);
+  let doneAt = data.response?.doneAt ?? null;
+  let brush = 'A';
+  const editable = P.status === 'open';
+  const fmt = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${d}. ${m}.`; };
+  const dayName = (iso) => E.DAY_LONG[E.dow(iso)];
+  const mName = (m) => { const t = E.monthLabel(m).split(' ')[0]; return t[0].toUpperCase() + t.slice(1); };
+  const dates = E.monthDays(month);
+  let saveTimer = null;
+  let saveState = '';
+
+  async function save() {
+    clearTimeout(saveTimer);
+    saveState = 'Ukládám…'; renderSave();
+    try {
+      const r = await BC.api(`avail/me?month=${month}`, { method: 'PUT', body: { days, notes, done } });
+      doneAt = r.response.doneAt;
+      saveState = 'Uloženo';
+    } catch (e) { saveState = ''; BC.toast(e.message, true); }
+    renderSave();
+  }
+  const queueSave = () => { clearTimeout(saveTimer); saveState = 'Neuloženo…'; renderSave(); saveTimer = setTimeout(save, 700); };
+  const renderSave = () => { const el = document.getElementById('saveState'); if (el) el.textContent = saveState; };
+
+  function statusCard() {
+    const filled = days.filter(Boolean).length;
+    if (P.status === 'pending') return `<div class="card card-pad stack" style="gap:4px"><b>Vyplňování se otevře ${dayName(P.opens)} ${fmt(P.opens)}</b><span class="small muted">Uzávěrka bude ${fmt(P.deadline)}. Do té doby se dá jen prohlížet.</span></div>`;
+    if (P.status === 'closed') return `<div class="card card-pad stack" style="gap:4px"><b>Uzavřeno – uzávěrka byla ${fmt(P.deadline)}</b><span class="small muted">Změny už nejdou. Když potřebuješ něco upravit, napiš provozní.</span></div>`;
+    const pct = Math.round((filled / n) * 100);
+    return `<div class="card card-pad stack" style="gap:8px">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span><b>Vyplněno ${filled} z ${n} dní</b></span><span class="small muted">uzávěrka ${dayName(P.deadline)} ${fmt(P.deadline)}</span></div>
+      <div class="progress"><div style="width:${pct}%"></div></div>
+      ${done ? `<span class="small" style="color:var(--ok-text);font-weight:700">✓ Odevzdáno${doneAt ? ` ${BC.fmtShort(doneAt)}` : ''} · upravovat můžeš až do uzávěrky</span>` : '<span class="small muted">Prázdné dny se berou jako „nemůžu“. Až budeš mít hotovo, klikni dole na Odevzdat.</span>'}
+    </div>`;
+  }
+
+  function calHtml() {
+    const offset = E.dow(dates[0]);
+    let html = E.DAY_NAMES.map((d, i) => `<span class="dn ${i >= 5 ? 'we' : ''}">${d}</span>`).join('');
+    for (let i = 0; i < offset; i++) html += '<span></span>';
+    dates.forEach((iso, i) => {
+      const c = days[i] || '_';
+      const label = c === 'A' ? 'ANO' : c === 'N' ? 'NE' : '';
+      html += `<button type="button" class="av-day c-${c} ${E.isWeekend(iso) ? 'we' : ''}" data-i="${i}" ${editable ? '' : 'disabled'}
+        aria-label="${esc(dayName(iso))} ${fmt(iso)}: ${label || 'nevyplněno'}${notes[i + 1] ? `, poznámka ${esc(notes[i + 1])}` : ''}">
+        <b>${i + 1}</b><span>${label}</span>${notes[i + 1] ? '<i class="dot"></i>' : ''}</button>`;
+    });
+    return html;
+  }
+
+  function render() {
+    const noteList = Object.entries(notes).sort((a, b) => a[0] - b[0]);
+    main.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Moje dostupnost</h1><a href="/dostupnost-tym.html?m=${month}" class="small" style="font-weight:700">Dostupnosti týmu</a></div>
+      <nav class="av-months" aria-label="Měsíc">${data.months.map((m) => `<a href="?m=${m.month}" class="${m.month === month ? 'active' : ''} ${m.status}"${m.month === month ? ' aria-current="page"' : ''}>
+        <b>${esc(mName(m.month))}</b><span>${m.status === 'open' ? `do ${fmt(m.deadline)}` : m.status === 'pending' ? `od ${fmt(m.opens)}` : 'uzavřeno'}</span></a>`).join('')}</nav>
+      ${statusCard()}
+      ${editable ? `<div class="stack" style="gap:6px"><span class="small" style="font-weight:700;color:var(--muted)">Vyber, co zapisuješ, a klepej na dny</span>
+        <div class="av-brushes" role="group" aria-label="Co zapisuji">
+          <button type="button" class="b-A" data-brush="A" aria-pressed="${brush === 'A'}">ANO<small>můžu</small></button>
+          <button type="button" class="b-N" data-brush="N" aria-pressed="${brush === 'N'}">NE<small>nemůžu</small></button>
+          <button type="button" class="b-X" data-brush="" aria-pressed="${brush === ''}">✕<small>vymazat</small></button>
+          <button type="button" class="b-T" data-brush="T" aria-pressed="${brush === 'T'}">✎<small>poznámka</small></button>
+        </div></div>` : ''}
+      <div class="card card-pad"><div class="av-cal">${calHtml()}</div></div>
+      ${editable ? `<div class="row" style="gap:8px"><button type="button" class="btn small outline" style="flex:1" data-fill="A">Prázdné dny → ANO</button><button type="button" class="btn small outline" style="flex:1" data-fill="N">Prázdné dny → NE</button></div>` : ''}
+      ${noteList.length ? `<div class="card av-notes"><div class="group-head">Poznámky</div>${noteList.map(([d, t]) => `<${editable ? 'button type="button"' : 'div'} class="item" ${editable ? `data-note="${d - 1}" style="width:100%;border:0;border-top:1px solid var(--line-2);background:#fff;font:inherit;text-align:left;cursor:pointer"` : ''}>
+          <span class="av-note-tag"></span><span class="item-main"><span class="item-title" style="font-size:14px">${esc(dayName(dates[d - 1]))} ${fmt(dates[d - 1])}</span><span class="item-sub">${esc(t)}</span></span></${editable ? 'button' : 'div'}>`).join('')}</div>` : ''}
+      ${editable ? `<button type="button" class="btn block" id="submit">${done ? 'Uloženo a odevzdáno ✓' : 'Mám hotovo – odevzdat'}</button>` : ''}
+      <div class="av-save" id="saveState" aria-live="polite">${esc(saveState)}</div>`;
+  }
+
+  function noteDialog(i) {
+    document.querySelector('dialog.sm-dialog')?.remove();
+    const dlg = document.createElement('dialog');
+    dlg.className = 'sm-dialog';
+    const c = days[i];
+    dlg.innerHTML = `<form method="dialog" id="nf">
+      <div class="sm-dlg-head"><div style="flex-grow:1"><div class="k">${esc(mName(month))}</div><h2>${esc(dayName(dates[i]))} ${fmt(dates[i])}</h2></div>
+        <button type="button" class="icon-btn" data-close aria-label="Zavřít" style="color:var(--ink-2)">✕</button></div>
+      <div class="sm-dlg-body">
+        <div class="sm-seg big" role="radiogroup" aria-label="Stav dne" style="width:fit-content">
+          ${[['A', 'ANO · můžu'], ['N', 'NE'], ['', 'nevyplněno']].map(([v, l]) => `<label><input type="radio" name="st" value="${v}" ${c === v ? 'checked' : ''}><span style="padding:0 12px">${l}</span></label>`).join('')}</div>
+        <label class="field"><span class="field-label">Poznámka <span class="muted" style="font-weight:500">(uvidí ji provozní i tým)</span></span>
+          <textarea class="input" name="note" rows="3" maxlength="200" placeholder="např. můžu až od 17:00">${esc(notes[i + 1] ?? '')}</textarea></label>
+      </div>
+      <div class="sm-dlg-foot">${notes[i + 1] ? '<button type="button" class="btn small ghost" data-del>Smazat poznámku</button>' : ''}<button type="submit" class="btn small">Hotovo</button></div></form>`;
+    document.body.appendChild(dlg);
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('[data-del]')?.addEventListener('click', () => { delete notes[i + 1]; dlg.close(); render(); queueSave(); });
+    dlg.querySelector('#nf').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      days[i] = f.get('st') ?? days[i];
+      const t = String(f.get('note') ?? '').trim();
+      if (t) notes[i + 1] = t; else delete notes[i + 1];
+      dlg.close(); render(); queueSave();
+    });
+    dlg.showModal();
+    dlg.querySelector('textarea').focus();
+  }
+
+  main.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-brush]');
+    if (b) { brush = b.dataset.brush; render(); return; }
+    const d = e.target.closest('[data-i]');
+    if (d && editable) {
+      const i = Number(d.dataset.i);
+      if (brush === 'T') { noteDialog(i); return; }
+      days[i] = brush; render(); queueSave(); return;
+    }
+    const nt = e.target.closest('[data-note]');
+    if (nt) { noteDialog(Number(nt.dataset.note)); return; }
+    const fl = e.target.closest('[data-fill]');
+    if (fl) { days = days.map((c) => c || fl.dataset.fill); render(); queueSave(); return; }
+    if (e.target.closest('#submit')) {
+      const empty = days.filter((c) => !c).length;
+      if (!done && empty && !confirm(`${empty} ${empty === 1 ? 'den je' : empty < 5 ? 'dny jsou' : 'dní je'} nevyplněných – berou se jako „nemůžu“. Odevzdat?`)) return;
+      done = true; render(); await save(); render();
+      BC.toast('Odevzdáno. Díky!');
+    }
+  });
+  // Při odchodu ze stránky se rozpracovaná změna ještě odešle.
+  window.addEventListener('pagehide', () => {
+    if (!saveTimer || saveState !== 'Neuloženo…') return;
+    clearTimeout(saveTimer);
+    fetch(`/api/avail/me?month=${month}`, { method: 'PUT', keepalive: true, credentials: 'same-origin', headers: { 'x-requested-with': 'basecamp', 'content-type': 'application/json' }, body: JSON.stringify({ days, notes, done }) });
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

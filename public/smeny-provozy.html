@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Provozy · Směny · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc } = BC;
+  const month = SM.currentMonth();
+  const D = await SM.load(month);
+  const cfg = D.config;
+  const main = document.getElementById('main');
+  const MN = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
+  const VEN = [['zaza', ['ZaZa Bar', 'ZaZa Kuchyň'], 'ZaZa'], ['little', ['Little ZaZa'], 'Little ZaZa']];
+
+  function card(venue, groups, title) {
+    const open = cfg.venues[venue].open;
+    return `<section class="card card-pad stack" style="gap:14px">
+      <h2>${esc(title)}</h2>
+      <div class="stack" style="gap:6px"><span class="label" style="margin:0">Otevřeno</span>
+        <div class="sm-days" role="group" aria-label="Otevírací dny ${esc(title)}">${E.DAY_NAMES.map((n, i) => `<button type="button" data-open="${venue}" data-d="${i}" aria-pressed="${open.includes(i)}">${n}</button>`).join('')}</div></div>
+      ${groups.map((g) => `<div class="stack" style="gap:4px"><b class="small" style="color:var(--muted)">${esc(g)}</b>
+        <div class="table-wrap"><table class="sm-table"><thead><tr><th>Pozice</th><th>Lidí</th><th>Všední den</th><th>So–Ne</th></tr></thead><tbody>
+        ${cfg.positions.filter((p) => p.group === g).map((p) => `<tr>
+          <td><b>${esc(p.name)}</b>${p.months ? `<div class="small muted">sezóna</div>` : ''}</td>
+          <td><input type="number" min="0" max="6" data-k="${p.key}" data-f="count" value="${p.count}" aria-label="Počet lidí ${esc(p.name)}"></td>
+          <td style="white-space:nowrap"><input type="time" data-k="${p.key}" data-f="wd0" value="${p.wd[0].padStart(5, '0')}" aria-label="Začátek všední den"> – <input type="time" data-k="${p.key}" data-f="wd1" value="${p.wd[1].padStart(5, '0')}" aria-label="Konec všední den"></td>
+          <td style="white-space:nowrap;background:#FBF4EE"><input type="time" data-k="${p.key}" data-f="we0" value="${p.we[0].padStart(5, '0')}" aria-label="Začátek víkend"> – <input type="time" data-k="${p.key}" data-f="we1" value="${p.we[1].padStart(5, '0')}" aria-label="Konec víkend"></td></tr>
+          ${p.months ? `<tr><td colspan="4" style="border-top:0;padding-top:0"><div class="row" style="flex-wrap:wrap;gap:8px"><span class="small" style="font-weight:600">Výpomoc se plánuje v měsících:</span>
+            <div class="sm-days" role="group" aria-label="Sezóna výpomoci">${MN.map((m, i) => `<button type="button" data-month="${p.key}" data-m="${i + 1}" aria-pressed="${p.months.includes(i + 1)}">${m}</button>`).join('')}</div></div></td></tr>` : ''}`).join('')}
+        </tbody></table></div></div>`).join('')}
+      ${venue === 'zaza' ? '<div class="sm-info">Vedoucí směny se vybírá každý den z barmana a placu (kdo má v nastavení „Může být vedoucí“).</div>' : ''}
+    </section>`;
+  }
+
+  function render() {
+    main.innerHTML = `${SM.tabs('provozy', month)}
+      <div class="sm-head"><div class="stack" style="gap:4px"><h1>Provozy a časy směn</h1><span class="lead">Nastavuje se jednou, platí pro každý další měsíc. Hodiny lidí se počítají z těchto časů.</span></div>
+        <div class="sm-actions"><button type="button" class="btn small" id="save">Uložit</button></div></div>
+      <div class="sm-grid3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))">${VEN.map(([v, g, t]) => card(v, g, t)).join('')}</div>`;
+  }
+
+  main.addEventListener('click', async (e) => {
+    const o = e.target.closest('[data-open]');
+    if (o) { const v = cfg.venues[o.dataset.open]; const d = Number(o.dataset.d); v.open = v.open.includes(d) ? v.open.filter((x) => x !== d) : [...v.open, d].sort(); o.setAttribute('aria-pressed', v.open.includes(d)); return; }
+    const m = e.target.closest('[data-month]');
+    if (m) { const p = SM.pos(cfg, m.dataset.month); const n = Number(m.dataset.m); p.months = p.months.includes(n) ? p.months.filter((x) => x !== n) : [...p.months, n].sort((a, b) => a - b); m.setAttribute('aria-pressed', p.months.includes(n)); return; }
+    if (e.target.closest('#save')) {
+      for (const inp of main.querySelectorAll('[data-k]')) {
+        const p = SM.pos(cfg, inp.dataset.k); const f = inp.dataset.f;
+        if (f === 'count') p.count = Math.max(0, Math.min(6, Number(inp.value) || 0));
+        else { const arr = f.startsWith('wd') ? p.wd : p.we; arr[Number(f.slice(2))] = inp.value || arr[Number(f.slice(2))]; }
+      }
+      try { await SM.saveConfig(cfg); BC.toast('Uloženo. Projeví se při dalším návrhu rozpisu.'); } catch (ex) { BC.toast(ex.message, true); }
+    }
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>

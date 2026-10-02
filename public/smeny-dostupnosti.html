@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dostupnosti · Směny · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/smeny.css">
+<style>
+.pc-cards { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 900px) { .pc-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pc-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; border: 2px solid transparent; }
+.pc-card.sel { border-color: var(--green); }
+.pc-card h2 { font-size: 23px; }
+.pc-st { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+.pc-st.open { background: var(--ok-bg); color: var(--ok-text); }
+.pc-st.pending { background: var(--cream-2); color: var(--muted); }
+.pc-st.closed { background: var(--no-bg); color: #8A4200; }
+.pc-facts { display: flex; flex-wrap: wrap; gap: 22px; font-size: 14px; }
+.pc-facts > div { display: flex; flex-direction: column; gap: 2px; }
+.pc-facts small { font-size: 12px; color: var(--muted); }
+.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tm-table td.nm { position: sticky; left: 0; background: #fff; z-index: 1; }
+.tm-table td { position: relative; }
+.tm-table td .dot { position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #8C2457; }
+.tm-table td.st { text-align: right; padding-left: 8px; font-size: 12px; white-space: nowrap; border: 0; }
+</style>
+</head>
+<body>
+<main class="bc-main wide" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script src="/smeny-engine.js"></script>
+<script src="/smeny.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'smeny', shifts: true });
+  const E = SM.E;
+  const { esc, icon } = BC;
+  const main = document.getElementById('main');
+  let P = await BC.api('smeny/periods');
+  const q = new URLSearchParams(location.search).get('m');
+  let month = q && /^20\d\d-\d\d$/.test(q) ? q : P.months.find((m) => m.status === 'open')?.month ?? P.months[0].month;
+  SM.remember(month);
+  let D = await SM.load(month);
+  let filter = 'all';
+  const fmt = (iso) => E.fmtDay(iso);
+  const dn = (iso) => E.DAY_NAMES[E.dow(iso)].toLowerCase();
+  const ST = { open: 'Otevřeno · vyplňuje se', pending: 'Připravuje se', closed: 'Po uzávěrce' };
+
+  function card(m) {
+    const pct = m.planned ? Math.round((m.done / m.planned) * 100) : 0;
+    const miss = m.missing.slice(0, 4).map(SM.shortName).join(', ') + (m.missing.length > 4 ? ` +${m.missing.length - 4}` : '');
+    const actions = m.status === 'open'
+      ? `<button type="button" class="btn small" data-act="remind" data-m="${m.month}" ${m.missing.length ? '' : 'disabled'}>Připomenout ${m.missing.length} ${m.missing.length === 1 ? 'člověku' : 'lidem'}</button>
+         <button type="button" class="btn small outline" data-act="deadline" data-m="${m.month}">Prodloužit uzávěrku</button>
+         <button type="button" class="btn small outline" data-act="close" data-m="${m.month}" style="color:var(--ink-2);border-color:var(--field)">Uzavřít hned</button>`
+      : m.status === 'pending'
+        ? `<button type="button" class="btn small outline" data-act="open" data-m="${m.month}">Otevřít hned</button>
+           <button type="button" class="btn small outline" data-act="dates" data-m="${m.month}" style="color:var(--ink-2);border-color:var(--field)">Změnit termíny</button>`
+        : `<button type="button" class="btn small outline" data-act="deadline" data-m="${m.month}">Znovu otevřít do…</button>`;
+    return `<section class="card pc-card ${m.month === month ? 'sel' : ''}">
+      <div class="row" style="flex-wrap:wrap;gap:10px"><h2>${esc(SM.monthTitle(m.month))}</h2><span class="pc-st ${m.status}">${ST[m.status]}</span>
+        ${m.month === month ? '<span class="small muted" style="margin-left:auto">zobrazeno níže</span>' : `<a class="small" style="margin-left:auto;font-weight:700" href="?m=${m.month}">Zobrazit odpovědi</a>`}</div>
+      <div class="pc-facts">
+        <div><small>${m.status === 'pending' ? 'Otevře se' : 'Otevřeno od'}</small><b>${dn(m.opens)} ${fmt(m.opens)}</b></div>
+        <div><small>Uzávěrka</small><b>${dn(m.deadline)} ${fmt(m.deadline)} ve 23:59</b>${m.custom ? '<small>upraveno ručně</small>' : '<small>podle pravidla</small>'}</div>
+        ${m.status !== 'pending' ? `<div style="flex-grow:1;min-width:180px"><small>Odevzdalo</small><div class="row" style="gap:10px"><div class="progress" style="flex-grow:1"><div style="width:${pct}%"></div></div><b>${m.done} / ${m.planned}</b></div>
+          ${m.missing.length ? `<small style="color:#8A4200;font-weight:600">Chybí: ${esc(miss)}</small>` : '<small style="color:var(--ok-text);font-weight:700">Všichni odevzdali</small>'}</div>` : ''}
+      </div>
+      ${m.remindedAt && m.status === 'open' ? `<span class="small muted">Připomenuto ${BC.fmtShort(m.remindedAt)} – lidé bez odevzdání to vidí zvýrazněně na Úvodu.</span>` : ''}
+      ${m.status === 'pending' ? '<div class="sm-info">Zaměstnanci měsíc vidí, ale vyplňovat ho půjde až po otevření.</div>' : ''}
+      <div class="pc-actions">${actions}</div>
+    </section>`;
+  }
+
+  function tableHtml() {
+    const dates = E.monthDays(month);
+    const av = D.availability ?? { people: {}, notes: {} };
+    const done = new Set(D.respDone ?? []);
+    const people = D.staff.filter((s) => s.active && (SM.hasPositions(s) || av.people[s.id]));
+    const missing = (s) => s.account && SM.hasPositions(s) && !done.has(s.id);
+    const list = people.filter((s) => filter === 'all' || (filter === 'missing' ? missing(s) : Object.keys(av.notes?.[s.id] ?? {}).length));
+    const notesN = people.filter((s) => Object.keys(av.notes?.[s.id] ?? {}).length).length;
+    const missN = people.filter(missing).length;
+    return `<div class="row" style="flex-wrap:wrap;gap:12px"><h2>Odpovědi · ${esc(E.monthLabel(month))}</h2>
+        <nav class="segmented" style="width:fit-content" aria-label="Filtr">${[['all', 'Všichni'], ['missing', `Neodevzdali (${missN})`], ['notes', `S poznámkou (${notesN})`]].map(([id, l]) => `<button type="button" data-filter="${id}" class="${id === filter ? 'active' : ''}">${l}</button>`).join('')}</nav>
+        <a class="small" style="margin-left:auto;font-weight:700" href="/smeny-import.html?m=${month}">Záloha: nahrát z Excelu</a></div>
+      <div class="card card-pad av-wrap"><table class="av-grid tm-table"><thead><tr><th></th>${dates.map((d) => `<th class="${E.isWeekend(d) ? 'we' : ''}">${E.DAY_NAMES[E.dow(d)]}<b>${Number(d.slice(8))}</b></th>`).join('')}<th style="text-align:right">Stav</th></tr></thead><tbody>
+        ${list.map((s) => {
+          const codes = av.people[s.id] ?? [];
+          const notes = av.notes?.[s.id] ?? {};
+          const filled = codes.filter(Boolean).length;
+          const responded = (D.respIds ?? []).includes(s.id);
+          const status = done.has(s.id) ? '<span style="color:var(--ok-text);font-weight:700">✓ odevzdáno</span>'
+            : responded ? `<span style="color:#8A4200;font-weight:700">rozpracováno ${filled}/${dates.length}</span>`
+            : D.excel?.people?.[s.id] ? '<span class="muted">z Excelu</span>'
+            : !s.account ? '<span class="muted">bez účtu</span>' : '<span style="color:#9A4800;font-weight:700">✗ nic</span>';
+          return `<tr><td class="nm"><b>${esc(s.name)}</b></td>${dates.map((d, i) => { const c = codes[i] || ''; const n = notes[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}<td class="st">${status}</td></tr>`;
+        }).join('') || `<tr><td colspan="${dates.length + 2}" class="muted" style="text-align:center;padding:16px">Nikdo takový.</td></tr>`}
+      </tbody></table></div>
+      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno (při plánování „dá se zeptat“)</span><span><i style="width:8px;height:8px;border-radius:50%;background:#8C2457"></i>poznámka – najeď myší</span></div>`;
+  }
+
+  function render() {
+    const cardMonths = P.months.some((m) => m.month === month) ? P.months : [...P.months, null];
+    main.innerHTML = `${SM.tabs('dostupnosti', month)}
+      <div class="sm-head"><div class="stack" style="gap:4px"><h1>Dostupnosti</h1>
+        <span class="lead">Pravidlo: další měsíc se otevírá <b>${P.rule.openDay}. den</b>, uzávěrka je <b>${P.rule.deadlineDay}. den</b> v měsíci · <button type="button" class="btn small ghost" data-act="rule" style="height:auto;padding:0;color:var(--green);text-decoration:underline">upravit</button></span></div>
+        <div class="sm-actions"><a class="btn small" href="/smeny.html?m=${month}">Do rozpisu</a></div></div>
+      <div class="pc-cards">${P.months.map(card).join('')}</div>
+      ${cardMonths.includes(null) ? `<div class="sm-info">Zobrazuješ ${esc(E.monthLabel(month))} (${ST[D.period.status].toLowerCase()}).</div>` : ''}
+      ${tableHtml()}`;
+  }
+
+  async function reload() { P = await BC.api('smeny/periods'); D = await SM.load(month); render(); }
+  async function put(body, msg) { try { await BC.api('smeny/periods', { method: 'PUT', body }); BC.toast(msg); await reload(); } catch (e) { BC.toast(e.message, true); } }
+
+  function dateDialog(title, fields, onSave) {
+    const dlg = SM.dialog(`<form method="dialog" id="df"><div class="sm-dlg-head"><div><div class="k">Dostupnosti</div><h2>${esc(title)}</h2></div></div>
+      <div class="sm-dlg-body">${fields.map((f) => `<label class="field"><span class="field-label">${esc(f.label)}</span><input class="input" type="${f.type ?? 'date'}" name="${f.name}" value="${esc(f.value)}" ${f.min ? `min="${f.min}" max="${f.max}"` : ''} required></label>`).join('')}</div>
+      <div class="sm-dlg-foot"><button type="button" class="btn small outline" data-close>Zrušit</button><button type="submit" class="btn small">Uložit</button></div></form>`);
+    dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('#df').addEventListener('submit', (e) => { e.preventDefault(); const f = new FormData(e.target); dlg.close(); onSave(Object.fromEntries(f)); });
+  }
+
+  main.addEventListener('click', async (e) => {
+    const fl = e.target.closest('[data-filter]');
+    if (fl) { filter = fl.dataset.filter; render(); return; }
+    const a = e.target.closest('[data-act]');
+    if (!a) return;
+    const m = P.months.find((x) => x.month === a.dataset.m);
+    const mt = m ? E.monthLabel(m.month) : '';
+    if (a.dataset.act === 'remind') { try { await BC.api(`smeny/remind?month=${m.month}`, { method: 'POST' }); BC.toast('Připomenuto – uvidí to zvýrazněně v BaseCampu.'); await reload(); } catch (ex) { BC.toast(ex.message, true); } }
+    if (a.dataset.act === 'close' && confirm(`Uzavřít vyplňování na ${mt} hned? Lidé pak už nic nezmění, dokud ho znovu neotevřeš.`)) put({ month: m.month, action: 'close' }, 'Uzavřeno.');
+    if (a.dataset.act === 'open') put({ month: m.month, action: 'open' }, 'Otevřeno – lidé můžou vyplňovat.');
+    if (a.dataset.act === 'deadline') dateDialog(`Uzávěrka – ${mt}`, [{ name: 'deadline', label: 'Vyplňovat jde až do (včetně)', value: m.deadline < P.today ? P.today : m.deadline }], (v) => put({ month: m.month, deadline: v.deadline }, 'Uzávěrka změněná.'));
+    if (a.dataset.act === 'dates') dateDialog(`Termíny – ${mt}`, [{ name: 'opensAt', label: 'Otevře se', value: m.opens }, { name: 'deadline', label: 'Uzávěrka (včetně)', value: m.deadline }], (v) => put({ month: m.month, opensAt: v.opensAt, deadline: v.deadline }, 'Termíny uložené.'));
+    if (a.dataset.act === 'rule') dateDialog('Pravidlo pro další měsíce', [{ name: 'openDay', label: 'Otevřít v předchozím měsíci dne', value: P.rule.openDay, type: 'number', min: 1, max: 28 }, { name: 'deadlineDay', label: 'Uzávěrka v předchozím měsíci dne', value: P.rule.deadlineDay, type: 'number', min: 1, max: 28 }],
+      (v) => put({ rule: { openDay: Number(v.openDay), deadlineDay: Number(v.deadlineDay) } }, 'Pravidlo uložené. Ručně upravené měsíce zůstávají, jak jsou.'));
+  });
+  render();
+})().catch(BC.fail);
+</script>
+</body>
+</html>
