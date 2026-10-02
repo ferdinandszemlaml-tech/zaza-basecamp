@@ -1,6 +1,6 @@
 // Směny – ukládání nastavení, dostupností, rotace a rozpisů. Jen pro adminy a provozní.
 // Samotný návrh rozpisu se počítá v prohlížeči (public/smeny-engine.js); server data jen hlídá a ukládá.
-import { getJSON, setJSON, listKeys } from './store.mjs';
+import { getJSON, setJSON, deleteJSON, listKeys } from './store.mjs';
 import { newId } from './auth.mjs';
 import { HttpError } from './http.mjs';
 
@@ -58,7 +58,7 @@ function cleanStaff(b, base) {
     if ([1, 2, 3].includes(n)) positions[k] = n;
   }
   const nick = String(b.nick ?? '').trim();
-  if (nick.length > 40) bad('Jméno v tabulce je příliš dlouhé.');
+  if (nick.length > 40) bad('Přezdívka je příliš dlouhá.');
   const out = {
     ...base,
     nick,
@@ -130,22 +130,55 @@ export async function availTodo(user) {
 }
 
 // Seznam lidí pro plánování: aktivní účty z BaseCampu + lidé bez účtu přidaní jen ve Směnách.
+// Dřív se „jméno v tabulce“ ukládalo VELKÝMI písmeny – jako přezdívku ho ukazujeme normálně („TERKA“ → „Terka“).
+function niceNick(n) {
+  const v = String(n ?? '').trim();
+  if (v.length < 3 || v !== v.toLocaleUpperCase('cs') || v === v.toLocaleLowerCase('cs')) return v;
+  return v.toLocaleLowerCase('cs').replace(/(^|[\s-])(\p{L})/gu, (m, a, c) => a + c.toLocaleUpperCase('cs'));
+}
+
+// Jednorázově: přezdívky („jména v tabulce“) uložené dřív ve Směnách se přesunou k účtům v BaseCampu.
+export async function migrateNicks(users) {
+  if (await getJSON('migrations/nick', null)) return false;
+  const saved = await loadStaff();
+  let changed = false;
+  for (const u of users) {
+    const n = niceNick(saved[u.id]?.nick);
+    if (n && !u.nick && !users.some((x) => x.nick && x.nick.toLocaleUpperCase('cs') === n.toLocaleUpperCase('cs'))) { u.nick = n; changed = true; }
+  }
+  await setJSON('migrations/nick', { at: new Date().toISOString() });
+  return changed;
+}
+
 async function staffList(loadUsers) {
   const [users, saved] = await Promise.all([loadUsers(), loadStaff()]);
   const out = [];
   for (const u of users.filter((x) => x.active)) {
     const s = saved[u.id] ?? {};
-    out.push({ ...s, id: u.id, name: u.name, account: true, active: s.planActive !== false, configured: Boolean(saved[u.id]) });
+    // Přezdívka se u lidí s účtem bere z BaseCampu (starší „jména v tabulce“ přesune migrateNicks).
+    out.push({ ...s, id: u.id, name: u.name, nick: u.nick ?? '', account: true, active: s.planActive !== false, configured: Boolean(saved[u.id]) });
   }
   for (const [id, s] of Object.entries(saved)) {
     if (!id.startsWith('sme_')) continue;
-    out.push({ ...s, id, account: false, active: s.planActive !== false, configured: true });
+    out.push({ ...s, id, nick: niceNick(s.nick), account: false, active: s.planActive !== false, configured: true });
   }
-  out.sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+  out.sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name, 'cs'));
   return out;
 }
 
-export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers }) {
+const foldNick = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+const cleanNick = (v) => String(v ?? '').trim().replace(/\s+/g, ' ');
+// Přezdívka musí být jednoznačná – podle ní se páruje tabulka dostupností.
+async function nickClash(loadUsers, nick, selfId) {
+  if (!nick) return;
+  const k = foldNick(nick);
+  const [users, saved] = await Promise.all([loadUsers(), loadStaff()]);
+  const u = users.find((x) => x.id !== selfId && x.active && foldNick(x.nick) === k);
+  const p = Object.entries(saved).find(([id, v]) => id !== selfId && id.startsWith('sme_') && foldNick(v.nick) === k);
+  if (u || p) bad(`Přezdívku „${nick}“ už má ${u ? u.name : p[1].name}.`);
+}
+
+export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers, saveUsers }) {
   return {
     'GET smeny/data': async (req, { url }) => {
       await requireShifts(req);
@@ -159,7 +192,7 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
       if (excel || Object.keys(responses).length) {
         availability = { ...(excel ?? { rows: [] }), people: { ...(excel?.people ?? {}) }, notes: {}, fromBasecamp: Object.keys(responses).length };
         for (const [uid, r] of Object.entries(responses)) {
-          availability.people[uid] = r.days;
+          if (!(excel?.override && excel.people?.[uid])) availability.people[uid] = r.days;
           if (r.notes && Object.keys(r.notes).length) availability.notes[uid] = r.notes;
         }
       }
@@ -210,8 +243,8 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
         loadUsers(), loadStaff(), loadResponses(month), getJSON(`smeny/avail/${month}`, null), getJSON(`smeny/plan/${month}`, null), getJSON('smeny/config', null),
       ]);
       const people = users.filter((x) => x.active && (isPlanned(staff[x.id]) || responses[x.id]))
-        .map((x) => ({ id: x.id, name: x.name, days: responses[x.id]?.days ?? excel?.people?.[x.id] ?? null, notes: responses[x.id]?.notes ?? {}, done: Boolean(responses[x.id]?.done) }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+        .map((x) => ({ id: x.id, name: x.name, nick: x.nick ?? '', days: (excel?.override && excel.people?.[x.id]) || responses[x.id]?.days || excel?.people?.[x.id] || null, notes: responses[x.id]?.notes ?? {}, done: Boolean(responses[x.id]?.done) }))
+        .sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name, 'cs'));
       // Rozpis ukazujeme jen pro měsíce, které už běží (návrh na další měsíc je rozpracovaný).
       const live = month <= pragueToday().slice(0, 7);
       return json(200, { month, people, plan: live && plan ? { assign: plan.assign, lead: plan.lead ?? {} } : null, config, period: periodOf(month, await loadPeriods()) });
@@ -228,7 +261,7 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
         const month = shiftMonth(today.slice(0, 7), d);
         const resp = await loadResponses(month);
         return { ...periodOf(month, periods, today), planned: planned.length, done: planned.filter((s) => resp[s.id]?.done).length,
-          missing: planned.filter((s) => !resp[s.id]?.done).map((s) => s.name) };
+          missing: planned.filter((s) => !resp[s.id]?.done).map((s) => s.nick || s.name) };
       }));
       return json(200, { rule: periods.rule, months, today });
     },
@@ -294,9 +327,11 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
       const name = String(b.name ?? '').trim();
       if (!name) bad('Zadej jméno.');
       if (name.length > 80) bad('Jméno je příliš dlouhé.');
+      const nick = cleanNick(b.nick);
+      await nickClash(loadUsers, nick, null);
       const all = await loadStaff();
       const id = newId('sme');
-      all[id] = cleanStaff({ ...b, nick: String(b.nick ?? '').trim().toUpperCase() }, { name });
+      all[id] = cleanStaff({ ...b, nick }, { name });
       await setJSON('smeny/staff', all);
       return json(200, { ok: true, id });
     },
@@ -306,21 +341,22 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
       const b = await body(req);
       const all = await loadStaff();
       let base = {};
+      const nick = cleanNick(b.nick);
+      if (nick.length > 30) bad('Přezdívka je příliš dlouhá (max. 30 znaků).');
+      await nickClash(loadUsers, nick, id);
       if (id.startsWith('usr_')) {
-        if (!(await loadUsers()).some((u) => u.id === id && u.active)) throw new HttpError(404, 'Zaměstnanec neexistuje.');
+        const users = await loadUsers();
+        const u = users.find((x) => x.id === id && x.active);
+        if (!u) throw new HttpError(404, 'Zaměstnanec neexistuje.');
+        // Přezdívka patří k účtu v BaseCampu – změna se projeví všude.
+        if (b.nick !== undefined && (u.nick ?? '') !== nick) { u.nick = nick; await saveUsers(users); }
       } else {
         if (!all[id]) throw new HttpError(404, 'Člověk neexistuje.');
         const name = String(b.name ?? all[id].name ?? '').trim();
         if (!name || name.length > 80) bad('Zadej jméno (max. 80 znaků).');
         base = { name };
       }
-      const nick = String(b.nick ?? '').trim().toUpperCase();
-      if (nick) {
-        const fold = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
-        const clash = Object.entries(all).find(([k, v]) => k !== id && v.nick && fold(v.nick) === fold(nick));
-        if (clash) bad(`Jméno v tabulce „${nick}“ už má někdo jiný.`);
-      }
-      all[id] = cleanStaff({ ...b, nick }, base);
+      all[id] = cleanStaff({ ...b, nick: id.startsWith('usr_') ? '' : nick }, base);
       await setJSON('smeny/staff', all);
       return json(200, { ok: true });
     },
@@ -370,9 +406,16 @@ export function smenyRoutes({ json, body, requireShifts, requireUser, loadUsers 
         nick: String(r.nick ?? '').slice(0, 40), pid: PID_RE.test(r.pid ?? '') ? r.pid : null,
         codes: Array.isArray(r.codes) ? r.codes.slice(0, 31).map((c) => (CODES.includes(c) ? c : '')) : [],
       })) : [];
-      const data = { people, rows, fileName: String(b.fileName ?? '').slice(0, 120), sheet: String(b.sheet ?? '').slice(0, 60), importedAt: new Date().toISOString() };
+      // override = Excel má přednost i před tím, co lidé vyplnili v BaseCampu (záloha, když se něco pokazí).
+      const data = { people, rows, override: Boolean(b.override), fileName: String(b.fileName ?? '').slice(0, 120), sheet: String(b.sheet ?? '').slice(0, 60), importedAt: new Date().toISOString() };
       await setJSON(`smeny/avail/${month}`, data);
       return json(200, { ok: true, availability: data });
+    },
+
+    'DELETE smeny/availability': async (req, { url }) => {
+      await requireShifts(req);
+      await deleteJSON(`smeny/avail/${monthParam(url)}`);
+      return json(200, { ok: true });
     },
 
     'PUT smeny/plan': async (req, { url }) => {

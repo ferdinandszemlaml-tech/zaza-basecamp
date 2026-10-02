@@ -18,12 +18,12 @@
   <div class="auth-body">
     <form id="form" novalidate>
       <h1>Zapomenuté heslo</h1>
-      <p class="lead">Zadej své uživatelské jméno. Pošleme ti e-mail s odkazem na nastavení nového hesla.</p>
+      <p class="lead">Zadej svůj e-mail, nebo uživatelské jméno. Pokud k němu existuje účet, pošleme na jeho e-mail odkaz na nové heslo – a připomeneme ti v něm i uživatelské jméno.</p>
       <div class="error" id="err" role="alert" hidden></div>
-      <div class="success" id="done" role="status" hidden>Pokud účet existuje, poslali jsme e-mail s odkazem. Podívej se i do složky Hromadné nebo Spam.</div>
+      <div class="success" id="done" role="status" hidden>Pokud účet existuje, poslali jsme na jeho e-mail odkaz na nové heslo. Podívej se i do složky Hromadné nebo Spam.</div>
       <div class="field" id="fieldWrap">
-        <label for="username">Uživatelské jméno</label>
-        <input class="input" id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <label for="username">E-mail nebo uživatelské jméno</label>
+        <input class="input" id="username" name="username" type="text" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="např. jana@email.cz" required>
       </div>
       <button class="btn block" type="submit" id="submit">Poslat odkaz</button>
       <a href="/" style="align-self:center;font-weight:600;padding:8px">Zpět na přihlášení</a>
@@ -38,7 +38,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = document.getElementById('err');
   err.hidden = true;
-  if (!form.username.value.trim()) { err.textContent = 'Zadej uživatelské jméno.'; err.hidden = false; return; }
+  if (!form.username.value.trim()) { err.textContent = 'Zadej e-mail nebo uživatelské jméno.'; err.hidden = false; return; }
   btn.disabled = true; btn.textContent = 'Odesílám…';
   try {
     await BC.api('password/forgot', { method: 'POST', allow401: true, body: { username: form.username.value } });

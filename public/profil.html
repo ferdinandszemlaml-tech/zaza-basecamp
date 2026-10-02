@@ -28,7 +28,7 @@
   document.getElementById('main').innerHTML = `
     <div class="row" style="gap:16px">
       <div class="avatar" style="width:64px;height:64px;font-size:22px">${esc(BC.initials(u.name))}</div>
-      <div class="stack" style="gap:2px"><h1 style="font-size:24px">${esc(u.name)}</h1><span class="muted small">${esc(u.username)}${u.role === 'admin' ? ' · admin' : u.role === 'provozni' ? ' · provozní' : ''}</span></div>
+      <div class="stack" style="gap:2px"><h1 style="font-size:24px">${BC.who(u)}</h1><span class="muted small">${esc(u.username)}${u.role === 'admin' ? ' · admin' : u.role === 'provozni' ? ' · provozní' : ''}</span></div>
     </div>
     ${u.positions.length ? `<div class="chips">${BC.posChips(u.positions)}</div>` : ''}
     <div class="card card-pad stack" style="gap:14px">

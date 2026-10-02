@@ -73,7 +73,7 @@
   }
 
   document.getElementById('main').innerHTML = `
-    <div class="stack" style="gap:6px"><h1>Ahoj, ${esc(BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p></div>
+    <div class="stack" style="gap:6px"><h1>Ahoj, ${esc(me.user.nick || BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p></div>
     ${total ? `<div class="card card-pad summary">
       <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Přečteno povinných dokumentů"><div style="width:${pct}%"></div></div>
       <span class="small" style="font-weight:700;color:var(--green);white-space:nowrap">${done} z ${total} povinných</span>

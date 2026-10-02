@@ -94,14 +94,15 @@
           const notes = av.notes?.[s.id] ?? {};
           const filled = codes.filter(Boolean).length;
           const responded = (D.respIds ?? []).includes(s.id);
-          const status = done.has(s.id) ? '<span style="color:var(--ok-text);font-weight:700">✓ odevzdáno</span>'
+          const status = D.excel?.override && D.excel.people?.[s.id] ? '<span style="color:#24548F;font-weight:700">z Excelu</span>'
+            : done.has(s.id) ? '<span style="color:var(--ok-text);font-weight:700">✓ odevzdáno</span>'
             : responded ? `<span style="color:#8A4200;font-weight:700">rozpracováno ${filled}/${dates.length}</span>`
             : D.excel?.people?.[s.id] ? '<span class="muted">z Excelu</span>'
             : !s.account ? '<span class="muted">bez účtu</span>' : '<span style="color:#9A4800;font-weight:700">✗ nic</span>';
-          return `<tr><td class="nm"><b>${esc(s.name)}</b></td>${dates.map((d, i) => { const c = codes[i] || ''; const n = notes[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}<td class="st">${status}</td></tr>`;
+          return `<tr><td class="nm" title="${esc(s.name)}"><b>${esc(SM.label(s))}</b></td>${dates.map((d, i) => { const c = codes[i] || ''; const n = notes[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}<td class="st">${status}</td></tr>`;
         }).join('') || `<tr><td colspan="${dates.length + 2}" class="muted" style="text-align:center;padding:16px">Nikdo takový.</td></tr>`}
       </tbody></table></div>
-      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno (při plánování „dá se zeptat“)</span><span><i style="width:8px;height:8px;border-radius:50%;background:#8C2457"></i>poznámka – najeď myší</span></div>`;
+      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno = v nouzi může (dá se zeptat)</span><span><i style="width:8px;height:8px;border-radius:50%;background:#8C2457"></i>poznámka – najeď myší</span></div>`;
   }
 
   function render() {

@@ -59,6 +59,7 @@
     const usedPids = new Set(matched.map((r) => r.pid));
     const head = days.map((d) => `<th class="${E.isWeekend(d) ? 'we' : ''}">${E.DAY_NAMES[E.dow(d)]}<b>${Number(d.slice(8))}</b></th>`).join('');
     const name = (pid) => D.staff.find((s) => s.id === pid)?.name ?? '';
+    const lbl = (pid) => SM.label(D.staff.find((s) => s.id === pid));
     main.innerHTML = `${SM.tabs('dostupnosti', month)}
       <div class="sm-head">
         <div class="sm-month"><a class="sm-nav-btn" href="?m=${SM.shiftMonth(month, -1)}" aria-label="Předchozí měsíc">${icon('back', 18)}</a>
@@ -78,17 +79,17 @@
       ${cur ? `<div class="sm-chips">
         <span class="sm-alert green">${matched.length} ${matched.length === 1 ? 'člověk spárován' : matched.length < 5 ? 'lidé spárováni' : 'lidí spárováno'}</span>
         ${blank.length ? `<span class="sm-alert orange">Nic nevyplnili: ${esc(blank.map((r) => r.nick).join(', '))}</span>` : ''}
-        ${missing.length ? `<span class="sm-alert orange">V tabulce chybí: ${esc(missing.map((s) => SM.shortName(s.name)).join(', '))}</span>` : ''}
+        ${missing.length ? `<span class="sm-alert orange">V tabulce chybí: ${esc(missing.map((s) => SM.label(s)).join(', '))}</span>` : ''}
       </div>
       ${unmatched.length ? `<div class="card card-pad stack"><b>Neznámá jména v tabulce – komu patří?</b>
-        <span class="hint">Platí jen pro lidi, kteří dostupnost nevyplnili přímo v BaseCampu. Po výběru se řádek hned spáruje. Při uložení se jméno zapíše k zaměstnanci jako „Jméno v tabulce“, příště se spáruje samo. Řádky, které nikomu nepatří, nech být.</span>
+        <span class="hint">Platí jen pro lidi, kteří dostupnost nevyplnili přímo v BaseCampu. Po výběru se řádek hned spáruje. Kdo ještě nemá přezdívku, tomu se při uložení jméno z tabulky zapíše jako přezdívka a příště se spáruje samo. Řádky, které nikomu nepatří, nech být.</span>
         ${unmatched.map((r) => `<div class="row" style="flex-wrap:wrap"><span class="sm-chip" style="font-size:13px;padding:6px 10px">${esc(r.nick)}</span>→
-          <select class="input" data-map="${esc(r.nick)}" style="width:auto;min-width:240px;height:42px"><option value="">nikomu</option>${D.staff.filter((s) => !usedPids.has(s.id)).map((s) => `<option value="${esc(s.id)}">${esc(s.name)}${s.nick ? ` (${esc(s.nick)})` : ''}</option>`).join('')}</select></div>`).join('')}
+          <select class="input" data-map="${esc(r.nick)}" style="width:auto;min-width:240px;height:42px"><option value="">nikomu</option>${D.staff.filter((s) => !usedPids.has(s.id)).map((s) => `<option value="${esc(s.id)}">${esc(s.nick || s.name)}${s.nick ? ` (${esc(s.name)})` : ''}</option>`).join('')}</select></div>`).join('')}
       </div>` : ''}
       <div class="card card-pad av-wrap"><table class="av-grid"><thead><tr><th></th>${head}</tr></thead><tbody>
-        ${rows.map((r) => `<tr><td class="nm"><b>${esc(r.nick)}</b>${r.mapped ? ' <span class="sm-chip acc">nově</span>' : ''}${r.pid ? `<div class="small muted">${esc(SM.shortName(name(r.pid)))}</div>` : '<div class="small" style="color:#A12E17">nespárováno</div>'}</td>${days.map((d, i) => { const c = r.codes[i] ?? ''; return `<td class="c-${c || '_'}" title="${esc(E.CODE_LABEL[c])}">${c === 'A' ? 'A' : c === 'N' ? 'N' : c}</td>`; }).join('')}</tr>`).join('')}
+        ${rows.map((r) => `<tr><td class="nm"><b>${esc(r.nick)}</b>${r.mapped ? ' <span class="sm-chip acc">nově</span>' : ''}${r.pid ? `<div class="small muted">${esc(lbl(r.pid) === r.nick || SM.nickCase(r.nick) === lbl(r.pid) ? SM.shortName(name(r.pid)) : lbl(r.pid))}</div>` : '<div class="small" style="color:#A12E17">nespárováno</div>'}</td>${days.map((d, i) => { const c = r.codes[i] ?? ''; return `<td class="c-${c || '_'}" title="${esc(E.CODE_LABEL[c])}">${c === 'A' ? 'A' : c === 'N' ? 'N' : c}</td>`; }).join('')}</tr>`).join('')}
       </tbody></table></div>
-      <div class="sm-legend">${[['A', 'ANO – může'], ['L', 'LITTLE – jen Little'], ['P', 'POMOC – jen výpomoc'], ['N', 'NE'], ['D', 'Dovolená'], ['Z', 'Zavřeno'], ['', 'nevyplněno = nemůže']].map(([c, l]) => `<span><i class="c-${c || '_'}" style="border:1px solid"></i>${esc(l)}</span>`).join('')}</div>`
+      <div class="sm-legend">${[['A', 'ANO – může'], ['L', 'LITTLE – jen Little'], ['P', 'POMOC – jen výpomoc'], ['N', 'NE'], ['D', 'Dovolená'], ['Z', 'Zavřeno'], ['', 'nevyplněno = jen v nouzi (dá se zeptat)']].map(([c, l]) => `<span><i class="c-${c || '_'}" style="border:1px solid"></i>${esc(l)}</span>`).join('')}</div>`
       : '<div class="card card-pad empty">Pro tento měsíc zatím nejsou nahrané žádné dostupnosti.</div>'}`;
   }
 
@@ -97,13 +98,14 @@
     btn.disabled = true;
     try {
       // ruční přiřazení neznámých jmen se uloží k zaměstnancům
-      for (const row of draft.rows.filter((r) => r.mapped && r.pid)) {
+      // (jen komu přezdívka ještě chybí – existující přezdívku tabulka nepřepíše)
+      for (const row of draft.rows.filter((r) => r.mapped && r.pid && !D.staff.find((x) => x.id === r.pid)?.nick)) {
         const s = D.staff.find((x) => x.id === row.pid);
-        await BC.api(`smeny/staff/${row.pid}`, { method: 'PUT', body: { ...s, nick: row.nick.toUpperCase(), planActive: s.planActive !== false } });
+        await BC.api(`smeny/staff/${row.pid}`, { method: 'PUT', body: { ...s, nick: SM.nickCase(row.nick), planActive: s.planActive !== false } });
       }
       const people = {};
       for (const r of draft.rows) if (r.pid) people[r.pid] = r.codes;
-      await BC.api(`smeny/availability?month=${month}`, { method: 'PUT', body: { fileName: draft.fileName, sheet: draft.sheet, people, rows: draft.rows.map(({ nick, pid, codes }) => ({ nick, pid, codes })) } });
+      await BC.api(`smeny/availability?month=${month}`, { method: 'PUT', body: { fileName: draft.fileName, sheet: draft.sheet, people, override: Boolean(D.excel?.override), rows: draft.rows.map(({ nick, pid, codes }) => ({ nick, pid, codes })) } });
       draft = null;
       D = await SM.load(month);
       render();

@@ -29,7 +29,7 @@
       <a href="/admin-zamestnanci.html" class="row" style="gap:4px;font-weight:700;text-decoration:none;padding:4px 0">${BC.icon('back', 18)}Zaměstnanci</a>
       <div class="row" style="gap:14px">
         <div class="avatar${u.active ? '' : ' off'}" style="width:58px;height:58px;font-size:20px">${esc(BC.initials(u.name))}</div>
-        <div class="stack" style="gap:2px"><h1 style="font-size:24px">${esc(u.name)}</h1>
+        <div class="stack" style="gap:2px"><h1 style="font-size:24px">${BC.who(u)}</h1>
           <span class="small muted">${esc(u.username)} · ${esc(u.email)}${u.phone ? ` · <a href="${BC.telHref(u.phone)}">${esc(u.phone)}</a>` : ''}</span>
           ${!u.active ? '<span class="small" style="color:var(--coral-dark);font-weight:700">Deaktivovaný účet</span>' : !u.hasPassword ? '<span class="small" style="color:var(--no-text);font-weight:700">Ještě si nenastavil/a heslo</span>' : ''}</div>
       </div>
@@ -37,6 +37,7 @@
       <form class="card card-pad stack" id="edit" style="gap:14px" novalidate>
         <div class="error" id="err" role="alert" hidden></div>
         <div class="field"><label for="ename">Jméno a příjmení</label><input class="input" id="ename" value="${esc(u.name)}"></div>
+        <div class="field"><label for="enick">Přezdívka <span class="muted" style="font-weight:400">(nepovinné)</span></label><input class="input" id="enick" value="${esc(u.nick ?? '')}" placeholder="např. Terka"><span class="hint">Ukazuje se jako hlavní jméno a podle ní se páruje tabulka dostupností.</span></div>
         <div class="field"><label for="eemail">E-mail</label><input class="input" id="eemail" type="email" value="${esc(u.email)}"></div>
         <div class="field"><label for="ephone">Telefon</label><input class="input" id="ephone" type="tel" inputmode="tel" placeholder="+420 777 123 456" value="${esc(u.phone)}"></div>
         <fieldset><legend>Pozice</legend><div class="checks">${meta.positions.map((p) => `<label class="check"><input type="checkbox" name="positions" value="${p.id}"${u.positions.includes(p.id) ? ' checked' : ''}>${esc(p.name)}</label>`).join('')}</div></fieldset>
@@ -89,7 +90,7 @@
       btn.disabled = true;
       try {
         await BC.api(`admin/users/${encodeURIComponent(u.id)}`, { method: 'PATCH', body: {
-          name: document.getElementById('ename').value, email: document.getElementById('eemail').value, phone: document.getElementById('ephone').value,
+          name: document.getElementById('ename').value, nick: document.getElementById('enick').value, email: document.getElementById('eemail').value, phone: document.getElementById('ephone').value,
           positions: [...form.querySelectorAll('[name=positions]:checked')].map((c) => c.value), role,
         } });
         BC.toast('Uloženo.');

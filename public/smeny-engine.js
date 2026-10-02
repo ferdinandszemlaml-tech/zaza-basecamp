@@ -468,12 +468,12 @@
       let reason = '';
       if (!p.positions[slot.key]) reason = 'Tuhle pozici nedělá';
       else if (busy) reason = 'Ten den už má směnu';
-      else if (!t && code === '') { group = 'ask'; reason = 'Nevyplnil/a – dá se zeptat'; }
+      else if (!t && code === '') { group = 'ask'; reason = 'Nevyplnil/a – v nouzi může, dá se zeptat'; }
       else if (!t) reason = `V dostupnostech: ${CODE_LABEL[code]}`;
       else if (t.tier === 3) group = 'emergency';
       else group = 'can';
       return {
-        id: p.id, name: p.name, contract: p.contract, isNew: p.isNew, lead: p.lead, tier: t?.tier ?? p.positions[slot.key] ?? null, flag: t?.flag ?? '',
+        id: p.id, name: p.name, nick: p.nick, contract: p.contract, isNew: p.isNew, lead: p.lead, tier: t?.tier ?? p.positions[slot.key] ?? null, flag: t?.flag ?? '',
         group, reason, warn, before: st.hours[p.id], after: st.hours[p.id] + slot.hours, minHours: p.minHours, maxHours: p.maxHours,
         below: belowMin(st, p), current: p.id === current, s: score(st, p, {}) + (warn.length ? 5 : 0),
         note: availability?.notes?.[p.id]?.[Number(slot.date.slice(8, 10))] ?? '',

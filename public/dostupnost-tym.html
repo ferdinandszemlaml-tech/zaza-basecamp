@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dostupnosti týmu · ZaZa BaseCamp</title>
+<title>Kdo kdy může · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
@@ -68,7 +68,7 @@
     const inShift = new Set(shifts.map((s) => s.pid));
     const mine = shifts.find((s) => s.pid === me.user.id);
     const note = (p) => (p.notes?.[i + 1] ? `<div class="tm-note">${esc(p.notes[i + 1])}</div>` : '');
-    const row = (p, info) => `<div class="tm-row ${p.id === me.user.id ? 'me' : ''}"><b>${esc(p.name)}</b><span class="i">${info}</span></div>${note(p)}`;
+    const row = (p, info) => `<div class="tm-row ${p.id === me.user.id ? 'me' : ''}"><b>${BC.who(p)}</b><span class="i">${info}</span></div>${note(p)}`;
     const free = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] === 'A');
     const no = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] === 'N');
     const other = data.people.filter((p) => !inShift.has(p.id) && p.days?.[i] && !['A', 'N'].includes(p.days[i]));
@@ -81,20 +81,20 @@
       ${data.plan ? group('g-shift', 'Ve směně', ' · podle rozpisu', shifts.sort((a, b) => cfg.positions.findIndex((x) => x.key === a.key) - cfg.positions.findIndex((x) => x.key === b.key))
         .map((s) => { const p = byId.get(s.pid) ?? { id: s.pid, name: '…', notes: {} }; return row(p, `${esc(posName(s.key))}${s.lead ? ' · vedoucí' : ''}`); })) : ''}
       ${group('g-no', 'Nemůžou', ` · ${no.length + other.length}`, [...no, ...other].map((p) => row(p, esc(E.CODE_LABEL[p.days[i]] ?? 'NE'))))}
-      ${group('g-none', 'Nevyplnili', ` · ${none.length}`, none.map((p) => row(p, '–')))}
-      ${!data.people.length ? '<div class="card empty">Zatím nikdo dostupnost nevyplnil.</div>' : ''}`;
+      ${group('g-none', 'Nevyplnili – jen v nouzi', ` · ${none.length}`, none.map((p) => row(p, '–')))}
+      ${!data.people.length ? '<div class="card empty">Zatím nikdo nic nevyplnil.</div>' : ''}`;
   }
 
   function tableHtml() {
     return `<div class="card card-pad av-wrap"><table class="av-grid tm-table"><thead><tr><th></th>${dates.map((d) => `<th class="${E.isWeekend(d) ? 'we' : ''}">${E.DAY_NAMES[E.dow(d)]}<b>${Number(d.slice(8))}</b></th>`).join('')}</tr></thead><tbody>
-      ${data.people.map((p) => `<tr><td class="nm ${p.id === me.user.id ? 'me' : ''}">${esc(p.name)}</td>${dates.map((d, i) => { const c = p.days?.[i] || ''; const n = p.notes?.[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c === 'A' ? 'A' : c ? (c === 'N' ? 'N' : c) : ''}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}</tr>`).join('')}
+      ${data.people.map((p) => `<tr><td class="nm ${p.id === me.user.id ? 'me' : ''}" title="${esc(p.name)}">${esc(BC.displayName(p))}</td>${dates.map((d, i) => { const c = p.days?.[i] || ''; const n = p.notes?.[i + 1]; return `<td class="c-${c || '_'}" ${n ? `title="${esc(n)}"` : ''}>${c === 'A' ? 'A' : c ? (c === 'N' ? 'N' : c) : ''}${n ? '<i class="dot"></i>' : ''}</td>`; }).join('')}</tr>`).join('')}
       </tbody></table></div>
-      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno</span><span><span class="av-note-tag" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8C2457"></span>poznámka (najeď myší)</span></div>`;
+      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i>ANO</span><span><i class="c-N" style="border:1px solid"></i>NE</span><span><i class="c-_" style="border:1px solid"></i>nevyplněno = jen v nouzi</span><span><span class="av-note-tag" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8C2457"></span>poznámka (najeď myší)</span></div>`;
   }
 
   function render() {
     main.innerHTML = `
-      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Dostupnosti týmu</h1><a href="/dostupnost.html" class="small" style="font-weight:700">Moje</a></div>
+      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Kdo kdy může</h1><a href="/dostupnost.html" class="small" style="font-weight:700">Moje</a></div>
       <nav class="segmented" aria-label="Měsíc">${months.map((m, k) => `<a href="?m=${m}" class="${m === month ? 'active' : ''}"${m === month ? ' aria-current="page"' : ''}>${esc(mName(m))}${k === 0 ? ' · teď' : ''}</a>`).join('')}</nav>
       <div class="row" style="justify-content:space-between;flex-wrap:wrap">
         <span class="small muted">${data.period.status === 'open' ? `Vyplňuje se do ${E.fmtDay(data.period.deadline)}` : data.period.status === 'pending' ? `Vyplňování se otevře ${E.fmtDay(data.period.opens)}` : data.plan ? 'Rozpis platí – vidíš, kdo je volný na výměnu' : 'Po uzávěrce'}</span>

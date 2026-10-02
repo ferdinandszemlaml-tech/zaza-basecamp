@@ -3,7 +3,7 @@ export const sentMails = (globalThis.__basecampMails ??= []); // jen pro lokáln
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function passwordMail({ name, link, kind }) {
+export function passwordMail({ name, username, link, kind }) {
   const welcome = kind === 'welcome';
   const subject = welcome ? 'ZaZa BaseCamp – nastav si heslo' : 'ZaZa BaseCamp – nové heslo';
   const intro = welcome
@@ -14,6 +14,7 @@ export function passwordMail({ name, link, kind }) {
 <div style="background:#0B4A44;padding:18px 24px;border-radius:12px 12px 0 0"><span style="color:#fff;font-size:22px;font-weight:bold;letter-spacing:2px">ZAZA</span> <span style="color:#CFE3DF;font-size:11px;letter-spacing:3px">BASECAMP</span></div>
 <div style="background:#F5F3EE;padding:24px;border-radius:0 0 12px 12px;font-size:15px;line-height:1.6">
 <p>Ahoj ${esc(name)},</p><p>${intro}</p>
+${username ? `<p>Tvoje uživatelské jméno pro přihlášení: <b>${esc(username)}</b><br><span style="font-size:13px;color:#5E5750">Přihlásit se jde i tímhle e-mailem.</span></p>` : ''}
 <p style="margin:24px 0"><a href="${esc(link)}" style="background:#0B4A44;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold">Nastavit heslo</a></p>
 <p style="font-size:13px;color:#5E5750">${validity}<br>Pokud tlačítko nefunguje, zkopíruj do prohlížeče:<br>${esc(link)}</p>
 <p>ZaZa Brno</p></div></div>`;

@@ -53,6 +53,10 @@ const BC = (() => {
   const positionName = (id) => meta?.positions.find((p) => p.id === id)?.name ?? id;
   const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
   const firstName = (name) => String(name).trim().split(/\s+/)[0];
+  // Přezdívka je hlavní, celé jméno menším písmem vedle ní.
+  const displayName = (p) => (p?.nick || p?.name || '');
+  const who = (p) => (p?.nick ? `${esc(p.nick)}<span class="who-name">${esc(p.name)}</span>` : esc(p?.name ?? ''));
+  const whoMatch = (p, q) => !q || `${p.nick ?? ''} ${p.name ?? ''}`.toLowerCase().includes(q);
   const fmtDate = (iso) => { const d = new Date(iso); return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`; };
   const fmtShort = (iso) => { const d = new Date(iso); return `${d.getDate()}. ${d.getMonth() + 1}.`; };
   const fileType = (ext) => ({ pdf: 'PDF', doc: 'Word', docx: 'Word', xls: 'Excel', xlsx: 'Excel' }[ext] ?? ext.toUpperCase());
@@ -129,7 +133,7 @@ const BC = (() => {
     const items = [
       { id: 'uvod', href: '/uvod.html', label: 'Úvod', icon: 'home', badge: me.unread },
       { id: 'tym', href: '/tym.html', label: 'Tým', icon: 'team' },
-      { id: 'dostupnost', href: '/dostupnost.html', label: 'Dostupnost', icon: 'calcheck', badge: me.availTodo?.length ?? 0 },
+      { id: 'dostupnost', href: '/dostupnost.html', label: 'Plánování směn', short: 'Plánování', icon: 'calcheck', badge: me.availTodo?.length ?? 0 },
       { id: 'profil', href: '/profil.html', label: 'Profil', icon: 'user' },
       ...(admin ? [{ id: 'admin', href: '/admin-dokumenty.html', label: 'Admin', icon: 'shield' }] : []),
       ...(shifts ? [{ id: 'smeny', href: '/smeny.html', label: 'Směny', icon: 'calendar' }] : []),
@@ -144,9 +148,9 @@ const BC = (() => {
     const tabbar = document.createElement('nav');
     tabbar.className = 'bc-tabbar';
     tabbar.setAttribute('aria-label', 'Hlavní menu');
-    tabbar.innerHTML = items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}>${icon(i.icon, 24)}${i.label}${badge(i.badge)}</a>`).join('');
+    tabbar.innerHTML = items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}>${icon(i.icon, 24)}${i.short ?? i.label}${badge(i.badge)}</a>`).join('');
     document.body.append(tabbar);
-    // Úvod: připomínka nevyplněné dostupnosti (místo e-mailu)
+    // Úvod: připomínka nevyplněného plánování směn (místo e-mailu)
     const todo = me.availTodo?.[0];
     if (active === 'uvod' && todo) {
       const [y, m] = todo.month.split('-').map(Number);
@@ -156,7 +160,7 @@ const BC = (() => {
       note.className = 'bc-main bc-notice';
       note.innerHTML = `<a class="card avail-banner${todo.reminded ? ' strong' : ''}" href="/dostupnost.html?m=${esc(todo.month)}">
         <span class="link-ico">${icon('calcheck', 22)}</span>
-        <span class="item-main"><span class="item-title">${todo.reminded ? 'Provozní tě žádá o vyplnění dostupnosti' : 'Vyplň dostupnost'} na ${mon} ${y}</span>
+        <span class="item-main"><span class="item-title">${todo.reminded ? 'Provozní tě žádá: vyplň plánování směn' : 'Vyplň plánování směn'} na ${mon} ${y}</span>
         <span class="item-sub">Uzávěrka ${dd}. ${dm}. ${dy} · zabere to minutu</span></span><span class="link-go">${icon('chevron', 20)}</span></a>`;
       document.querySelector('.bc-main')?.before(note);
     }
@@ -204,7 +208,7 @@ const BC = (() => {
   }
 
   return {
-    api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, fileLink, adminTabs, posChips,
+    api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, displayName, who, whoMatch, fileLink, adminTabs, posChips,
     trackOpens, fail, filesLabel, filesList, telHref, linkKind, linkCard, byOrder, mergeItems, sectionName, positionName, get meta() { return meta; },
   };
 })();

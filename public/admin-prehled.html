@@ -95,14 +95,14 @@
         const missing = sec ? p.missing.filter((m) => m.section === sec) : p.missing;
         return { ...p, missing, relevant: p.total > 0 };
       })
-      .filter((p) => p.relevant && (!only || p.missing.length) && (!q || p.name.toLowerCase().includes(q)))
-      .sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name, 'cs'));
+      .filter((p) => p.relevant && (!only || p.missing.length) && BC.whoMatch(p, q))
+      .sort((a, b) => b.missing.length - a.missing.length || BC.displayName(a).localeCompare(BC.displayName(b), 'cs'));
     const out = document.getElementById('out');
     out.innerHTML = list.length ? list.map((p) => `
       <div class="card pcard">
         <div class="pcard-top">
           <span class="avatar" style="width:38px;height:38px;font-size:13px">${esc(BC.initials(p.name))}</span>
-          <span class="item-main"><a href="/admin-zamestnanec.html?id=${esc(p.id)}">${esc(p.name)}</a><span class="item-sub">${p.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</span></span>
+          <span class="item-main"><a href="/admin-zamestnanec.html?id=${esc(p.id)}">${BC.who(p)}</a><span class="item-sub">${p.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</span></span>
           <span class="${p.done < p.total ? 'count-no' : 'count-ok'}" style="white-space:nowrap">${p.done} / ${p.total}</span>
         </div>
         ${bar(p.done, p.total)}
@@ -128,7 +128,7 @@
           <span class="${d.done < d.total ? 'count-no' : 'count-ok'}" style="white-space:nowrap">${d.done} / ${d.total}</span>
         </div>
         ${bar(d.done, d.total)}
-        ${d.missing.length ? `<span class="small muted">Ještě neotevřeli:</span>${chips(d.missing, `d-${d.id}`, (m) => `<span style="--sec:var(--no)"><a href="/admin-zamestnanec.html?id=${esc(m.id)}">${esc(m.name)}</a></span>`)}` : '<span class="allok">✓ Přečetli všichni</span>'}
+        ${d.missing.length ? `<span class="small muted">Ještě neotevřeli:</span>${chips(d.missing, `d-${d.id}`, (m) => `<span style="--sec:var(--no)"><a href="/admin-zamestnanec.html?id=${esc(m.id)}" title="${esc(m.name)}">${esc(BC.displayName(m))}</a></span>`)}` : '<span class="allok">✓ Přečetli všichni</span>'}
       </div>`).join('')
       : `<div class="card empty">${only ? 'Všechny povinné dokumenty mají přečtené všichni.' : 'Žádné povinné dokumenty.'}</div>`;
     const open = summary.documents.filter((d) => (!sec || d.section === sec) && d.done < d.total).length;
@@ -145,7 +145,7 @@
     const data = tableData;
     const only = document.getElementById('only').checked;
     const q = document.getElementById('q').value.trim().toLowerCase();
-    const rows = data.rows.filter((r) => (!only || r.relevant) && (!q || r.name.toLowerCase().includes(q)));
+    const rows = data.rows.filter((r) => (!only || r.relevant) && BC.whoMatch(r, q));
     const relevantCount = data.rows.filter((r) => r.relevant).length;
     if (!data.columns.length) { out.innerHTML = '<div class="card empty">V této sekci zatím nejsou žádné dokumenty.</div>'; document.getElementById('note').textContent = ''; return; }
     out.innerHTML = `<div class="card table-wrap"><table class="matrix">
@@ -154,7 +154,7 @@
           ${c.total ? `<div class="${c.done === c.total ? 'count-ok' : 'count-no'}" style="margin-top:6px;font-size:12px">${c.done} / ${c.total}</div>` : ''}</th>`).join('')}
         <th scope="col">Chybí</th></tr></thead>
       <tbody>${rows.length ? rows.map((r) => `<tr>
-        <td><a href="/admin-zamestnanec.html?id=${esc(r.id)}">${esc(r.name)}</a><div class="muted" style="font-size:12px">${r.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</div></td>
+        <td><a href="/admin-zamestnanec.html?id=${esc(r.id)}">${BC.who(r)}</a><div class="muted" style="font-size:12px">${r.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice'}</div></td>
         ${r.cells.map((c) => `<td>${BC.mark(c)}</td>`).join('')}
         <td class="${r.missing ? 'count-no' : 'count-ok'}">${r.missing}</td></tr>`).join('')
         : `<tr><td colspan="${data.columns.length + 2}" class="muted" style="text-align:center">Nikoho takového nenacházím.</td></tr>`}</tbody>

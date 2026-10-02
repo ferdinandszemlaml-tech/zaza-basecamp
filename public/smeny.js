@@ -54,6 +54,10 @@ const SM = (() => {
     if (w.length < 2) return w[0] ?? '';
     return `${w[0]} ${w[w.length - 1][0]}.`;
   };
+  // Krátké jméno do rozpisu: přezdívka, jinak „Jméno P.“
+  const label = (s) => (s?.nick || shortName(s?.name));
+  // Přezdívka z tabulky („TERKA“) → „Terka“
+  const nickCase = (n) => String(n ?? '').trim().toLocaleLowerCase('cs').replace(/(^|[\s-])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase('cs'));
   const hasPositions = (s) => Object.keys(s.positions ?? {}).length > 0;
   const contractChip = (c) => `<span class="sm-chip">${esc(c ?? 'DPP')}</span>`;
   const newChip = (s) => (s.isNew ? '<span class="sm-chip new">nový</span>' : '');
@@ -87,5 +91,5 @@ const SM = (() => {
     return xlsxPromise;
   }
 
-  return { E, tabs, currentMonth, remember, shiftMonth, monthTitle, load, saveConfig, pos, posLabel, GROUPS, groupClass, shortName, hasPositions, contractChip, newChip, fmtH, timeRange, dialog, xlsx };
+  return { E, tabs, currentMonth, remember, shiftMonth, monthTitle, load, saveConfig, pos, posLabel, GROUPS, groupClass, shortName, label, nickCase, hasPositions, contractChip, newChip, fmtH, timeRange, dialog, xlsx };
 })();

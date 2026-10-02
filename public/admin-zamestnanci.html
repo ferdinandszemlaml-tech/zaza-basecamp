@@ -28,6 +28,7 @@
       <h2>Nový zaměstnanec</h2>
       <div class="error" id="err" role="alert" hidden></div>
       <div class="field"><label for="name">Jméno a příjmení</label><input class="input" id="name" autocomplete="off"></div>
+      <div class="field"><label for="nick">Přezdívka <span class="muted" style="font-weight:400">(nepovinné)</span></label><input class="input" id="nick" autocomplete="off" placeholder="např. Terka"><span class="hint">Jak mu/jí v týmu říkáte. Ukazuje se jako hlavní jméno a podle ní se páruje tabulka dostupností.</span></div>
       <div class="field"><label for="username">Uživatelské jméno</label><input class="input" id="username" autocapitalize="none" spellcheck="false" autocomplete="off"><span class="hint">Doplní se samo podle jména, můžeš ho upravit.</span></div>
       <div class="field"><label for="email">E-mail</label><input class="input" id="email" type="email" autocomplete="off"><span class="hint">Přijde na něj odkaz na nastavení hesla.</span></div>
       <div class="field"><label for="phone">Telefon <span class="muted" style="font-weight:400">(nepovinné)</span></label><input class="input" id="phone" type="tel" inputmode="tel" placeholder="+420 777 123 456" autocomplete="off"></div>
@@ -67,7 +68,7 @@
     btn.disabled = true;
     try {
       const r = await BC.api('admin/users', { method: 'POST', body: {
-        name: nameIn.value, username: form.username.value, email: form.email.value, phone: document.getElementById('phone').value, role: form.role.value,
+        name: nameIn.value, nick: document.getElementById('nick').value, username: form.username.value, email: form.email.value, phone: document.getElementById('phone').value, role: form.role.value,
         positions: [...form.querySelectorAll('[name=positions]:checked')].map((c) => c.value),
       } });
       const box = document.getElementById('linkBox');
@@ -90,11 +91,11 @@
     const more = document.getElementById('showOff');
     more.hidden = inactive === 0;
     more.textContent = showInactive ? 'Skrýt deaktivované' : `Zobrazit deaktivované (${inactive})`;
-    const shown = users.filter((u) => (showInactive || u.active)).filter((u) => !q || `${u.name} ${u.username} ${u.positions.map(BC.positionName).join(' ')}`.toLowerCase().includes(q));
+    const shown = users.filter((u) => (showInactive || u.active)).filter((u) => !q || `${u.nick ?? ''} ${u.name} ${u.username} ${u.positions.map(BC.positionName).join(' ')}`.toLowerCase().includes(q));
     document.getElementById('list').innerHTML = shown.length ? shown.map((u) => `
       <a class="item" href="/admin-zamestnanec.html?id=${esc(u.id)}">
         <span class="avatar${u.active ? '' : ' off'}" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(u.name))}</span>
-        <span class="item-main"><span class="item-title" style="${u.active ? '' : 'color:var(--muted-2)'}">${esc(u.name)}${u.role === 'admin' ? ' <span class="pill admin">Admin</span>' : u.role === 'provozni' ? ' <span class="pill admin">Provozní</span>' : ''}</span>
+        <span class="item-main"><span class="item-title" style="${u.active ? '' : 'color:var(--muted-2)'}">${BC.who(u)}${u.role === 'admin' ? ' <span class="pill admin">Admin</span>' : u.role === 'provozni' ? ' <span class="pill admin">Provozní</span>' : ''}</span>
         <span class="item-sub">${!u.active ? 'Deaktivovaný účet' : !u.hasPassword ? 'Čeká na nastavení hesla' : (u.positions.map(BC.positionName).map(esc).join(' · ') || 'Bez pozice')}</span></span>
         ${u.active ? (u.missing ? `<span class="pill no">✗ ${u.missing}</span>` : '<span class="pill ok">✓ vše</span>') : ''}
       </a>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';

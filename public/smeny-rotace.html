@@ -50,10 +50,10 @@
     if (!own.length) return { html: `<div class="rot-cell none ${inMonth ? '' : 'out'}">${label}<b>Nikdo</b><span class="s">nikdo nemá ${type} týden</span></div>` };
     const main = own.find((m) => avOk(m.id, date));
     const color = (m) => COLORS[ms.indexOf(m) % COLORS.length];
-    if (main) return { html: `<div class="rot-cell ${inMonth ? '' : 'out'}" style="background:${color(main)[0]};border-color:${color(main)[1]}">${label}<b>${esc(SM.shortName(main.name))}</b><span class="s">${type} · ${SM.fmtH(hours)}</span></div>`, who: main.id, hours, inMonth };
+    if (main) return { html: `<div class="rot-cell ${inMonth ? '' : 'out'}" style="background:${color(main)[0]};border-color:${color(main)[1]}">${label}<b>${esc(SM.label(main))}</b><span class="s">${type} · ${SM.fmtH(hours)}</span></div>`, who: main.id, hours, inMonth };
     const cover = ms.find((m) => !own.includes(m) && wk[m.id] !== type && avOk(m.id, date));
-    const missing = own.map((m) => SM.shortName(m.name)).join(', ');
-    if (cover) return { html: `<div class="rot-cell conflict ${inMonth ? '' : 'out'}">${label}<b>${esc(SM.shortName(cover.name))}</b><span class="s">${esc(missing)} nemůže · zaskakuje</span></div>`, who: cover.id, hours, inMonth };
+    const missing = own.map((m) => SM.label(m)).join(', ');
+    if (cover) return { html: `<div class="rot-cell conflict ${inMonth ? '' : 'out'}">${label}<b>${esc(SM.label(cover))}</b><span class="s">${esc(missing)} nemůže · zaskakuje</span></div>`, who: cover.id, hours, inMonth };
     return { html: `<div class="rot-cell none ${inMonth ? '' : 'out'}">${label}<b>Nikdo</b><span class="s">${esc(missing)} nemůže</span></div>` };
   }
 
@@ -69,7 +69,7 @@
       const cells = Array.from({ length: 7 }, (_, i) => dayCell(w, E.addDays(w, i), ms));
       for (const c of cells) if (c.who && c.inMonth && totals[c.who]) { totals[c.who].n++; totals[c.who].h += c.hours; }
       rowsHtml += `<div class="rot-row"><div class="rot-week"><b>${esc(weekLabel(w))}</b>
-        ${ms.map((m) => `<div class="rot-member"><span>${esc(SM.shortName(m.name))}</span><span class="sm-seg">${['L', 'S', '-'].map((v) => `<label><input type="radio" name="${esc(w)}|${esc(m.id)}" value="${v}" ${(D.rotation?.[w]?.[m.id] ?? '') === v ? 'checked' : ''}><span>${v === '-' ? '–' : v}</span></label>`).join('')}</span></div>`).join('')}
+        ${ms.map((m) => `<div class="rot-member"><span>${esc(SM.label(m))}</span><span class="sm-seg">${['L', 'S', '-'].map((v) => `<label><input type="radio" name="${esc(w)}|${esc(m.id)}" value="${v}" ${(D.rotation?.[w]?.[m.id] ?? '') === v ? 'checked' : ''}><span>${v === '-' ? '–' : v}</span></label>`).join('')}</span></div>`).join('')}
         </div>${cells.map((c) => c.html).join('')}</div>`;
     }
     main.innerHTML = `${SM.tabs('rotace', month)}
@@ -95,7 +95,7 @@
         }).join('')}</div>
         ${rowsHtml}
       </div>
-      <div class="sm-chips">${ms.map((m, i) => `<span class="sm-alert" style="background:#fff;box-shadow:var(--shadow);color:var(--ink)"><i style="width:14px;height:14px;border-radius:4px;background:${COLORS[i % COLORS.length][1]};display:inline-block"></i>${esc(m.name)} · ${totals[m.id].n} směn · ${SM.fmtH(totals[m.id].h)} za měsíc</span>`).join('')}
+      <div class="sm-chips">${ms.map((m, i) => `<span class="sm-alert" style="background:#fff;box-shadow:var(--shadow);color:var(--ink)"><i style="width:14px;height:14px;border-radius:4px;background:${COLORS[i % COLORS.length][1]};display:inline-block"></i>${esc(SM.label(m))} · ${totals[m.id].n} směn · ${SM.fmtH(totals[m.id].h)} za měsíc</span>`).join('')}
         <span class="small muted">Oranžově: pizzař má v dostupnostech NE a zaskakuje druhý. Červeně: ten den nikdo nejde.</span></div>`}`;
   }
 

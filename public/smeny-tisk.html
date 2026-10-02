@@ -57,7 +57,7 @@ b.v { display: inline-block; margin-left: 3pt; padding: 0 3pt; border-radius: 3p
   const ev = E.evaluate({ config: cfg, staff: D.staff, availability: D.availability, month, plan: D.plan });
   const slotIds = new Set(ev.slots.map((s) => s.id));
   const keys = new Set(ev.slots.map((s) => s.key));
-  const name = (pid) => SM.shortName(D.staff.find((s) => s.id === pid)?.name ?? '?');
+  const name = (pid) => SM.label(D.staff.find((s) => s.id === pid)) || '?';
   const cols = cfg.positions.filter((p) => p.count > 0 && keys.has(p.key)).flatMap((p) => Array.from({ length: p.count }, (_, i) => ({ ...p, idx: i })));
   const groups = SM.GROUPS.map((g) => ({ g, n: cols.filter((c) => c.group === g).length })).filter((x) => x.n);
   const rows = E.monthDays(month).map((d) => `<tr class="${E.isWeekend(d) ? 'we' : ''}"><td class="d">${E.DAY_NAMES[E.dow(d)]} ${E.fmtDay(d)}</td>${cols.map((c) => {
@@ -67,7 +67,7 @@ b.v { display: inline-block; margin-left: 3pt; padding: 0 3pt; border-radius: 3p
     if (!pid) return '<td class="e">neobsazeno</td>';
     return `<td>${esc(name(pid))}${E.LEAD_KEYS.includes(c.key) && ev.dayInfo[d]?.lead === pid ? '<b class="v">V</b>' : ''}</td>`;
   }).join('')}</tr>`).join('');
-  const people = D.staff.filter((s) => SM.hasPositions(s) && ev.people[s.id]?.shifts).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+  const people = D.staff.filter((s) => SM.hasPositions(s) && ev.people[s.id]?.shifts).sort((a, b) => SM.label(a).localeCompare(SM.label(b), 'cs'));
   out.innerHTML = `<h1>Rozpis směn · ${esc(E.monthLabel(month))}</h1>
     <div class="sub">ZaZa Brno · vytištěno ${BC.fmtDate(new Date().toISOString())}</div>
     <table><colgroup><col style="width:52pt">${cols.map(() => '<col>').join('')}</colgroup>
@@ -76,7 +76,7 @@ b.v { display: inline-block; margin-left: 3pt; padding: 0 3pt; border-radius: 3p
     <div class="legend"><b class="v">V</b> vedoucí směny ZaZa</div>
     <div class="page2"><h1 style="font-size:14pt;margin-top:4pt">Souhrn lidí</h1>
     <table style="width:auto;min-width:60%"><thead><tr><th style="width:150pt">Jméno</th><th style="width:50pt">Úvazek</th><th style="width:50pt">Směny</th><th style="width:60pt">Hodiny</th><th style="width:70pt">Víkend. dny</th><th style="width:70pt">Vedoucí</th></tr></thead>
-    <tbody>${people.map((s) => { const r = ev.people[s.id]; return `<tr><td>${esc(s.name)}</td><td>${esc(s.contract ?? 'DPP')}</td><td>${r.shifts}</td><td>${E.fmtHours(r.hours)}</td><td>${r.weekend}</td><td>${r.leads || ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+    <tbody>${people.map((s) => { const r = ev.people[s.id]; return `<tr><td>${esc(s.nick ? `${s.nick} (${s.name})` : s.name)}</td><td>${esc(s.contract ?? 'DPP')}</td><td>${r.shifts}</td><td>${E.fmtHours(r.hours)}</td><td>${r.weekend}</td><td>${r.leads || ''}</td></tr>`; }).join('')}</tbody></table></div>`;
   if (document.fonts?.ready) await document.fonts.ready;
   setTimeout(() => print(), 300);
 })().catch((e) => { document.getElementById('out').textContent = e.message; });

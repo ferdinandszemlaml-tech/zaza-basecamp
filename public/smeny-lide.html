@@ -46,7 +46,7 @@
       </div>
       <div>${items.map((s) => `<a class="item ${s.id === selected ? 'sel' : ''}" href="?id=${esc(s.id)}" data-pick="${esc(s.id)}">
           <span class="avatar ${s.active ? '' : 'off'}" style="width:38px;height:38px;font-size:13px">${esc(BC.initials(s.name))}</span>
-          <span class="item-main"><span class="item-title">${esc(s.name)} ${s.nick ? `<span class="sm-chip">${esc(s.nick)}</span>` : ''}</span><span class="item-sub">${esc(posShort(s))}</span></span>
+          <span class="item-main"><span class="item-title">${BC.who(s)}</span><span class="item-sub">${esc(posShort(s))}</span></span>
           ${SM.hasPositions(s) ? SM.contractChip(s.contract) : '<span class="pill no" style="font-size:11px">nenastaveno</span>'}</a>`).join('') || '<div class="empty">Nikoho takového nenacházím.</div>'}</div>
       <div class="card-pad"><button type="button" class="btn small outline block" id="add">${icon('plus', 16)}Přidat člověka bez účtu</button></div>`;
   }
@@ -65,12 +65,12 @@
     return `<form id="f" class="stack" style="gap:20px" novalidate>
       <div class="row" style="flex-wrap:wrap">
         <span class="avatar" style="width:52px;height:52px;font-size:17px">${esc(BC.initials(s.name))}</span>
-        <div class="item-main">${s.account ? `<h2 style="font-size:24px">${esc(s.name)}</h2><span class="small muted">Jméno se bere z účtu v BaseCampu</span>`
+        <div class="item-main">${s.account ? `<h2 style="font-size:24px">${esc(s.nick || s.name)}</h2><span class="small muted">${s.nick ? `${esc(s.name)} · ` : ''}jméno se bere z účtu v BaseCampu</span>`
           : `<label for="nm" class="small" style="font-weight:600">Jméno (bez účtu v BaseCampu)</label><input class="input" id="nm" name="name" value="${esc(s.name)}" style="height:44px;max-width:360px">`}</div>
         <button type="submit" class="btn small">Uložit změny</button>
       </div>
       <div class="sm-grid3">
-        <div class="field"><label for="nick">Jméno v tabulce dostupností</label><input class="input" id="nick" name="nick" value="${esc(s.nick ?? '')}" placeholder="např. TERKA" style="height:46px;text-transform:uppercase"></div>
+        <div class="field"><label for="nick">Přezdívka</label><input class="input" id="nick" name="nick" value="${esc(s.nick ?? '')}" placeholder="např. Terka" style="height:46px"><span class="hint">Ukazuje se v rozpisu a podle ní se páruje tabulka dostupností.${s.account ? ' Změní se i v BaseCampu.' : ''}</span></div>
         <fieldset><legend>Úvazek</legend>${seg('contract', s.contract ?? 'DPP', E.CONTRACTS.map((c) => [c, c])).replace('sm-seg', 'sm-seg big')}</fieldset>
         <fieldset><legend>Dohodnutá priorita</legend>${seg('agreed', s.agreed ?? 2, [[1, 'Vysoká'], [2, 'Běžná'], [3, 'Nízká']]).replace('sm-seg', 'sm-seg big')}</fieldset>
       </div>

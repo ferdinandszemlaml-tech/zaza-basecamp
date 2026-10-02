@@ -6,7 +6,7 @@ import {
 } from '../lib/auth.mjs';
 import { sendMail, passwordMail } from '../lib/mail.mjs';
 import { HttpError } from '../lib/http.mjs';
-import { smenyRoutes, availTodo } from '../lib/smeny.mjs';
+import { smenyRoutes, availTodo, migrateNicks } from '../lib/smeny.mjs';
 import {
   SECTIONS, POSITIONS, DEFAULT_MANDATORY, FILE_TYPES, MAX_FILE_BYTES,
   WELCOME_TOKEN_HOURS, RESET_TOKEN_HOURS, ADMIN_RESET_TOKEN_HOURS, MIN_PASSWORD,
@@ -35,10 +35,24 @@ function text(value, { max = 200, required = true, label = 'Pole' } = {}) {
   return v;
 }
 const normUsername = (v) => String(v ?? '').trim().toLowerCase();
+// Přihlášení i zapomenuté heslo přijmou uživatelské jméno nebo e-mail.
+const findLogin = (users, v) => users.find((x) => x.active && (v.includes('@') ? x.email === v : x.username === v));
 function username(v) {
   const u = normUsername(v);
   if (!/^[a-z0-9._-]{3,40}$/.test(u)) bad('Uživatelské jméno: 3–40 znaků, jen malá písmena bez diakritiky, čísla, tečka, pomlčka.');
   return u;
+}
+// Přezdívka: jak člověku v týmu říkáme (a jak je zapsaný v tabulce dostupností).
+function nickname(v) {
+  const n = String(v ?? '').trim().replace(/\s+/g, ' ');
+  if (n.length > 30) bad('Přezdívka je příliš dlouhá (max. 30 znaků).');
+  return n;
+}
+const foldNick = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+function nickClash(users, nick, selfId) {
+  if (!nick) return;
+  const other = users.find((x) => x.id !== selfId && x.active && x.nick && foldNick(x.nick) === foldNick(nick));
+  if (other) bad(`Přezdívku „${nick}“ už má ${other.name}.`);
 }
 function email(v) {
   const e = String(v ?? '').trim().toLowerCase();
@@ -94,11 +108,19 @@ async function body(req) {
 }
 
 const publicUser = (u) => ({
-  id: u.id, name: u.name, username: u.username, email: u.email, phone: u.phone ?? '', role: u.role,
+  id: u.id, name: u.name, nick: u.nick ?? '', username: u.username, email: u.email, phone: u.phone ?? '', role: u.role,
   positions: u.positions, active: u.active, createdAt: u.createdAt, hasPassword: Boolean(u.passwordHash),
 });
 
-const loadUsers = () => getJSON('users', []);
+let nicksChecked = false;
+async function loadUsers() {
+  const users = await getJSON('users', []);
+  if (!nicksChecked) {
+    nicksChecked = true;
+    if (await migrateNicks(users)) await setJSON('users', users);
+  }
+  return users;
+}
 const saveUsers = (v) => setJSON('users', v);
 const loadDocs = () => getJSON('documents', []);
 const saveDocs = (v) => setJSON('documents', v);
@@ -177,7 +199,7 @@ async function issuePasswordLink(req, user, kind, hours) {
   tokens.push({ hash, userId: user.id, expiresAt: Date.now() + hours * HOUR });
   await setJSON('tokens', tokens);
   const link = `${new URL(req.url).origin}/nastaveni-hesla.html?token=${raw}`;
-  const { subject, html } = passwordMail({ name: user.name, link, kind });
+  const { subject, html } = passwordMail({ name: user.name, username: user.username, link, kind });
   const sent = await sendMail({ to: user.email, name: user.name, subject, html });
   return { sent, link };
 }
@@ -272,7 +294,7 @@ const ROUTES = {
     if (!key) throw new HttpError(500, 'Server není nastavený: chybí SETUP_KEY.');
     if (!safeEqual(b.setupKey ?? '', key)) throw new HttpError(403, 'Nesprávný instalační klíč.');
     const user = {
-      id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), username: username(b.username),
+      id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), nick: nickname(b.nick), username: username(b.username),
       email: email(b.email), role: 'admin', positions: [], active: true,
       passwordHash: hashPassword(password(b.password)), pwv: 1, createdAt: new Date().toISOString(),
     };
@@ -287,10 +309,10 @@ const ROUTES = {
     const rlKey = `login:${name}`;
     if (await limited(rlKey, 5, 15 * 60 * 1000)) throw new HttpError(429, 'Příliš mnoho pokusů. Zkus to znovu za 15 minut.');
     const users = await loadUsers();
-    const u = users.find((x) => x.username === name && x.active);
+    const u = findLogin(users, name);
     if (!verifyPassword(String(b.password ?? ''), u?.passwordHash)) {
       await countHit(rlKey, 15 * 60 * 1000);
-      throw new HttpError(401, 'Nesprávné uživatelské jméno nebo heslo.');
+      throw new HttpError(401, 'Nesprávné přihlašovací jméno nebo heslo.');
     }
     await clearHits(rlKey);
     return json(200, { ok: true }, { 'set-cookie': sessionCookie(u) });
@@ -325,20 +347,21 @@ const ROUTES = {
   'GET team': async (req) => {
     await requireUser(req);
     const users = (await loadUsers()).filter((u) => u.active);
-    users.sort((a, b) => a.name.localeCompare(b.name, 'cs'));
+    users.sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name, 'cs'));
     return json(200, {
-      team: users.map((u) => ({ id: u.id, name: u.name, positions: u.positions, phone: u.phone ?? '', role: u.role })),
+      team: users.map((u) => ({ id: u.id, name: u.name, nick: u.nick ?? '', positions: u.positions, phone: u.phone ?? '', role: u.role })),
     });
   },
 
   // ── hesla ──
   'POST password/forgot': async (req) => {
     const b = await body(req);
-    const name = normUsername(b.username);
+    // Jde zadat uživatelské jméno, nebo e-mail (uživatelská jména zavináč obsahovat nemůžou).
+    const name = normUsername(b.username ?? b.email).slice(0, 120);
     const rlKey = `forgot:${name}`;
     if (name && !(await limited(rlKey, 3, HOUR))) {
       await countHit(rlKey, HOUR);
-      const u = (await loadUsers()).find((x) => x.username === name && x.active);
+      const u = findLogin(await loadUsers(), name);
       if (u) await issuePasswordLink(req, u, 'reset', RESET_TOKEN_HOURS);
     }
     // Vždy stejná odpověď, aby nešlo zjišťovat, které účty existují.
@@ -679,7 +702,7 @@ const ROUTES = {
       const s = userStats(items, u, await loadReads(u.id));
       return { ...publicUser(u), missing: s.missing };
     }));
-    list.sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name, 'cs'));
+    list.sort((a, b) => (b.active - a.active) || (a.nick || a.name).localeCompare(b.nick || b.name, 'cs'));
     return json(200, { users: list });
   },
 
@@ -688,12 +711,13 @@ const ROUTES = {
     const b = await body(req);
     const users = await loadUsers();
     const user = {
-      id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), username: username(b.username),
+      id: newId('usr'), name: text(b.name, { max: 80, label: 'Jméno' }), nick: nickname(b.nick), username: username(b.username),
       email: email(b.email), phone: phone(b.phone), role: roleOf(b.role), positions: positions(b.positions),
       active: true, passwordHash: null, pwv: 1, createdAt: new Date().toISOString(),
     };
     if (users.some((x) => x.username === user.username)) bad('Toto uživatelské jméno už existuje.');
     if (users.some((x) => x.email === user.email)) bad('Tento e-mail už má jiný účet.');
+    nickClash(users, user.nick, user.id);
     users.push(user);
     await saveUsers(users);
     const { sent, link } = await issuePasswordLink(req, user, 'welcome', WELCOME_TOKEN_HOURS);
@@ -718,6 +742,7 @@ const ROUTES = {
     const u = users.find((x) => x.id === id);
     if (!u) throw new HttpError(404, 'Zaměstnanec neexistuje.');
     if (b.name !== undefined) u.name = text(b.name, { max: 80, label: 'Jméno' });
+    if (b.nick !== undefined) { u.nick = nickname(b.nick); nickClash(users, u.nick, u.id); }
     if (b.email !== undefined) {
       const e = email(b.email);
       if (users.some((x) => x.id !== u.id && x.email === e)) bad('Tento e-mail už má jiný účet.');
@@ -771,7 +796,7 @@ const ROUTES = {
       const mand = items.filter((d) => isMandatory(d, u));
       const missing = mand.filter((d) => !m.has(d.readKey));
       return {
-        id: u.id, name: u.name, positions: u.positions, total: mand.length, done: mand.length - missing.length,
+        id: u.id, name: u.name, nick: u.nick ?? '', positions: u.positions, total: mand.length, done: mand.length - missing.length,
         missing: missing.map((d) => ({ id: d.id, kind: d.kind, title: d.title, section: d.section, version: d.version, uploadedAt: d.uploadedAt })),
       };
     });
@@ -780,7 +805,7 @@ const ROUTES = {
       const missing = who.filter((u) => !readsBy.get(u.id).has(d.readKey));
       return {
         id: d.id, kind: d.kind, title: d.title, section: d.section, heading: d.heading, version: d.version, uploadedAt: d.uploadedAt,
-        total: who.length, done: who.length - missing.length, missing: missing.map((u) => ({ id: u.id, name: u.name })),
+        total: who.length, done: who.length - missing.length, missing: missing.map((u) => ({ id: u.id, name: u.name, nick: u.nick ?? '' })),
       };
     });
     return json(200, { people, documents });
@@ -802,7 +827,7 @@ const ROUTES = {
         return read ? 'ok' : isMandatory(d, u) ? 'no' : 'na';
       });
       const relevant = docs.some((d) => isMandatory(d, u));
-      return { id: u.id, name: u.name, positions: u.positions, cells, missing: cells.filter((c) => c === 'no').length, relevant };
+      return { id: u.id, name: u.name, nick: u.nick ?? '', positions: u.positions, cells, missing: cells.filter((c) => c === 'no').length, relevant };
     }));
     const columns = docs.map((d, i) => {
       const mand = rows.filter((r) => active.find((u) => u.id === r.id) && isMandatory(d, active.find((u) => u.id === r.id)));
@@ -817,4 +842,4 @@ const ROUTES = {
 };
 
 // ── Směny (admin a provozní) ──
-Object.assign(ROUTES, smenyRoutes({ json, body, requireShifts, requireUser, loadUsers }));
+Object.assign(ROUTES, smenyRoutes({ json, body, requireShifts, requireUser, loadUsers, saveUsers }));

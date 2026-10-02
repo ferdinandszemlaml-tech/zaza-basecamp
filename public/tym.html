@@ -43,14 +43,14 @@
 
   function render() {
     const q = document.getElementById('q').value.trim().toLowerCase();
-    const shown = team.filter((m) => (!pos || m.positions.includes(pos)) && (!q || m.name.toLowerCase().includes(q)));
+    const shown = team.filter((m) => (!pos || m.positions.includes(pos)) && BC.whoMatch(m, q));
     document.getElementById('list').innerHTML = shown.length ? shown.map((m) => `
       <div class="item">
         <span class="avatar" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(m.name))}</span>
-        <span class="item-main"><span class="item-title">${esc(m.name)}</span>
+        <span class="item-main"><span class="item-title">${BC.who(m)}</span>
           <span class="item-sub">${m.positions.map(BC.positionName).map(esc).join(' · ') || (m.role === 'admin' ? 'Vedení' : m.role === 'provozni' ? 'Provozní' : '')}</span>
           ${m.phone ? `<a class="num" href="${BC.telHref(m.phone)}">${esc(m.phone)}</a>` : '<span class="nophone">bez čísla</span>'}</span>
-        ${m.phone ? `<a class="call" href="${BC.telHref(m.phone)}" aria-label="Zavolat ${esc(m.name)}">${BC.icon('phone', 22)}</a>` : ''}
+        ${m.phone ? `<a class="call" href="${BC.telHref(m.phone)}" aria-label="Zavolat ${esc(BC.displayName(m))}">${BC.icon('phone', 22)}</a>` : ''}
       </div>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
   }
   document.getElementById('q').addEventListener('input', render);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Moje dostupnost · ZaZa BaseCamp</title>
+<title>Plánování směn · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
@@ -95,7 +95,7 @@
     return `<div class="card card-pad stack" style="gap:8px">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span><b>Vyplněno ${filled} z ${n} dní</b></span><span class="small muted">uzávěrka ${dayName(P.deadline)} ${fmt(P.deadline)}</span></div>
       <div class="progress"><div style="width:${pct}%"></div></div>
-      ${done ? `<span class="small" style="color:var(--ok-text);font-weight:700">✓ Odevzdáno${doneAt ? ` ${BC.fmtShort(doneAt)}` : ''} · upravovat můžeš až do uzávěrky</span>` : '<span class="small muted">Prázdné dny se berou jako „nemůžu“. Až budeš mít hotovo, klikni dole na Odevzdat.</span>'}
+      ${done ? `<span class="small" style="color:var(--ok-text);font-weight:700">✓ Odevzdáno${doneAt ? ` ${BC.fmtShort(doneAt)}` : ''} · upravovat můžeš až do uzávěrky</span>` : '<span class="small muted">Nevyplněný den znamená „radši ne, ale v nouzi můžu“. Když opravdu nemůžeš, dej NE. Až budeš mít hotovo, klikni dole na Odevzdat.</span>'}
     </div>`;
   }
 
@@ -116,18 +116,19 @@
   function render() {
     const noteList = Object.entries(notes).sort((a, b) => a[0] - b[0]);
     main.innerHTML = `
-      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Moje dostupnost</h1><a href="/dostupnost-tym.html?m=${month}" class="small" style="font-weight:700">Dostupnosti týmu</a></div>
+      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Plánování směn</h1><a href="/dostupnost-tym.html?m=${month}" class="small" style="font-weight:700">Kdo kdy může</a></div>
       <nav class="av-months" aria-label="Měsíc">${data.months.map((m) => `<a href="?m=${m.month}" class="${m.month === month ? 'active' : ''} ${m.status}"${m.month === month ? ' aria-current="page"' : ''}>
         <b>${esc(mName(m.month))}</b><span>${m.status === 'open' ? `do ${fmt(m.deadline)}` : m.status === 'pending' ? `od ${fmt(m.opens)}` : 'uzavřeno'}</span></a>`).join('')}</nav>
       ${statusCard()}
-      ${editable ? `<div class="stack" style="gap:6px"><span class="small" style="font-weight:700;color:var(--muted)">Vyber, co zapisuješ, a klepej na dny</span>
+      ${editable ? `<div class="stack" style="gap:6px"><span class="small" style="font-weight:700;color:var(--muted)">Vyber, co zapisuješ, a klepej na dny, kdy můžeš pracovat</span>
         <div class="av-brushes" role="group" aria-label="Co zapisuji">
           <button type="button" class="b-A" data-brush="A" aria-pressed="${brush === 'A'}">ANO<small>můžu</small></button>
-          <button type="button" class="b-N" data-brush="N" aria-pressed="${brush === 'N'}">NE<small>nemůžu</small></button>
+          <button type="button" class="b-N" data-brush="N" aria-pressed="${brush === 'N'}">NE<small>nemůžu vůbec</small></button>
           <button type="button" class="b-X" data-brush="" aria-pressed="${brush === ''}">✕<small>vymazat</small></button>
           <button type="button" class="b-T" data-brush="T" aria-pressed="${brush === 'T'}">✎<small>poznámka</small></button>
         </div></div>` : ''}
       <div class="card card-pad"><div class="av-cal">${calHtml()}</div></div>
+      <div class="sm-legend"><span><i class="c-A" style="border:1px solid"></i><b>ANO</b> můžu</span><span><i class="c-N" style="border:1px solid"></i><b>NE</b> nemůžu vůbec</span><span><i class="c-_" style="border:1px solid"></i><b>nevyplněno</b> radši ne, ale v nouzi můžu</span></div>
       ${editable ? `<div class="row" style="gap:8px"><button type="button" class="btn small outline" style="flex:1" data-fill="A">Prázdné dny → ANO</button><button type="button" class="btn small outline" style="flex:1" data-fill="N">Prázdné dny → NE</button></div>` : ''}
       ${noteList.length ? `<div class="card av-notes"><div class="group-head">Poznámky</div>${noteList.map(([d, t]) => `<${editable ? 'button type="button"' : 'div'} class="item" ${editable ? `data-note="${d - 1}" style="width:100%;border:0;border-top:1px solid var(--line-2);background:#fff;font:inherit;text-align:left;cursor:pointer"` : ''}>
           <span class="av-note-tag"></span><span class="item-main"><span class="item-title" style="font-size:14px">${esc(dayName(dates[d - 1]))} ${fmt(dates[d - 1])}</span><span class="item-sub">${esc(t)}</span></span></${editable ? 'button' : 'div'}>`).join('')}</div>` : ''}
@@ -145,7 +146,7 @@
         <button type="button" class="icon-btn" data-close aria-label="Zavřít" style="color:var(--ink-2)">✕</button></div>
       <div class="sm-dlg-body">
         <div class="sm-seg big" role="radiogroup" aria-label="Stav dne" style="width:fit-content">
-          ${[['A', 'ANO · můžu'], ['N', 'NE'], ['', 'nevyplněno']].map(([v, l]) => `<label><input type="radio" name="st" value="${v}" ${c === v ? 'checked' : ''}><span style="padding:0 12px">${l}</span></label>`).join('')}</div>
+          ${[['A', 'ANO · můžu'], ['N', 'NE · vůbec'], ['', 'nevyplněno · v nouzi']].map(([v, l]) => `<label><input type="radio" name="st" value="${v}" ${c === v ? 'checked' : ''}><span style="padding:0 12px">${l}</span></label>`).join('')}</div>
         <label class="field"><span class="field-label">Poznámka <span class="muted" style="font-weight:500">(uvidí ji provozní i tým)</span></span>
           <textarea class="input" name="note" rows="3" maxlength="200" placeholder="např. můžu až od 17:00">${esc(notes[i + 1] ?? '')}</textarea></label>
       </div>
@@ -181,7 +182,7 @@
     if (fl) { days = days.map((c) => c || fl.dataset.fill); render(); queueSave(); return; }
     if (e.target.closest('#submit')) {
       const empty = days.filter((c) => !c).length;
-      if (!done && empty && !confirm(`${empty} ${empty === 1 ? 'den je' : empty < 5 ? 'dny jsou' : 'dní je'} nevyplněných – berou se jako „nemůžu“. Odevzdat?`)) return;
+      if (!done && empty && !confirm(`${empty} ${empty === 1 ? 'den je' : empty < 5 ? 'dny jsou' : 'dní je'} nevyplněných – znamená to „radši ne, ale v nouzi můžu“. Odevzdat?`)) return;
       done = true; render(); await save(); render();
       BC.toast('Odevzdáno. Díky!');
     }
