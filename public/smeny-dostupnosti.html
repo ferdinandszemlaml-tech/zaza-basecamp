@@ -109,7 +109,7 @@
     const cardMonths = P.months.some((m) => m.month === month) ? P.months : [...P.months, null];
     main.innerHTML = `${SM.tabs('dostupnosti', month)}
       <div class="sm-head"><div class="stack" style="gap:4px"><h1>Dostupnosti</h1>
-        <span class="lead">Pravidlo: další měsíc se otevírá <b>${P.rule.openDay}. den</b>, uzávěrka je <b>${P.rule.deadlineDay}. den</b> v měsíci · <button type="button" class="btn small ghost" data-act="rule" style="height:auto;padding:0;color:var(--green);text-decoration:underline">upravit</button></span></div>
+        <span class="lead">Pravidlo: další měsíc se otevírá <b>${P.rule.openDay}. den</b>, uzávěrka je <b>${P.rule.deadlineDay}. den</b> v měsíci · <button type="button" class="btn small ghost" data-act="rule" style="height:auto;min-height:32px;padding:4px 2px;color:var(--green);text-decoration:underline">upravit</button></span></div>
         <div class="sm-actions"><a class="btn small" href="/smeny.html?m=${month}">Do rozpisu</a></div></div>
       <div class="pc-cards">${P.months.map(card).join('')}</div>
       ${cardMonths.includes(null) ? `<div class="sm-info">Zobrazuješ ${esc(E.monthLabel(month))} (${ST[D.period.status].toLowerCase()}).</div>` : ''}

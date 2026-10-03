@@ -145,8 +145,8 @@
       <div class="sm-dlg-head"><div style="flex-grow:1"><div class="k">${esc(mName(month))}</div><h2>${esc(dayName(dates[i]))} ${fmt(dates[i])}</h2></div>
         <button type="button" class="icon-btn" data-close aria-label="Zavřít" style="color:var(--ink-2)">✕</button></div>
       <div class="sm-dlg-body">
-        <div class="sm-seg big" role="radiogroup" aria-label="Stav dne" style="width:fit-content">
-          ${[['A', 'ANO · můžu'], ['N', 'NE · vůbec'], ['', 'nevyplněno · v nouzi']].map(([v, l]) => `<label><input type="radio" name="st" value="${v}" ${c === v ? 'checked' : ''}><span style="padding:0 12px">${l}</span></label>`).join('')}</div>
+        <div class="av-states" role="radiogroup" aria-label="Stav dne">
+          ${[['A', 'ANO', 'můžu'], ['N', 'NE', 'nemůžu vůbec'], ['', '–', 'jen v nouzi']].map(([v, l, s]) => `<label><input type="radio" name="st" value="${v}" ${c === v ? 'checked' : ''}><span>${l}<small>${s}</small></span></label>`).join('')}</div>
         <label class="field"><span class="field-label">Poznámka <span class="muted" style="font-weight:500">(uvidí ji provozní i tým)</span></span>
           <textarea class="input" name="note" rows="3" maxlength="200" placeholder="např. můžu až od 17:00">${esc(notes[i + 1] ?? '')}</textarea></label>
       </div>
@@ -164,7 +164,8 @@
       dlg.close(); render(); queueSave();
     });
     dlg.showModal();
-    dlg.querySelector('textarea').focus();
+    // na telefonu klávesnici hned nevysouváme (okno by poskočilo), na počítači rovnou psát
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches) dlg.querySelector('textarea').focus();
   }
 
   main.addEventListener('click', async (e) => {

@@ -1,4 +1,10 @@
 // ZaZa-BaseCamp – společný kód všech stránek (volání serveru, hlavička, navigace, drobnosti).
+// iPhone/iPad: při klepnutí do pole stránku samo nepřibližovat (přiblížit dvěma prsty jde dál).
+(() => {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const m = document.querySelector('meta[name="viewport"]');
+  if (ios && m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1';
+})();
 const BC = (() => {
   const ICONS = {
     home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',

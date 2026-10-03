@@ -29,7 +29,9 @@ a:hover { color: var(--coral-dark); }
 h1, h2 { font-family: var(--display); color: var(--green); margin: 0; }
 h1 { font-size: 28px; font-weight: 700; }
 h2 { font-size: 21px; font-weight: 700; }
-button, input, select { font-family: inherit; font-size: 16px; }
+button, input, select, textarea { font-family: inherit; font-size: 16px; }
+/* iPhone přibližuje stránku u polí s písmem pod 16 px – na telefonu proto všechna pole 16 px */
+@media (max-width: 899px) { input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px !important; } }
 [hidden] { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

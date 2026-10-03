@@ -1,5 +1,5 @@
 /* Směny – vzhled karty Směny (navazuje na styles.css). */
-.sm-tabs { overflow-x: auto; }
+.sm-tabs { flex-wrap: wrap; }
 .sm-tabs a { white-space: nowrap; }
 @media (min-width: 900px) { .sm-tabs { width: fit-content; } }
 
@@ -107,7 +107,7 @@
 .sm-daycard h3 { margin: 0; padding: 10px 14px 6px; font-family: var(--display); font-size: 16px; color: var(--green); }
 
 /* dialog */
-.sm-dialog { width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 40px); padding: 0; border: 0; border-radius: 20px; box-shadow: 0 8px 40px rgba(11,74,68,0.25); color: var(--ink); }
+.sm-dialog { width: min(560px, calc(100vw - 24px)); max-width: calc(100vw - 24px); max-height: calc(100vh - 40px); max-height: calc(100dvh - 24px); overflow-x: hidden; padding: 0; border: 0; border-radius: 20px; box-shadow: 0 8px 40px rgba(11,74,68,0.25); color: var(--ink); }
 .sm-dialog.wide { width: min(760px, calc(100vw - 24px)); }
 .sm-dialog::backdrop { background: rgba(31, 42, 40, 0.45); }
 .sm-dlg-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line-2); display: flex; align-items: flex-start; gap: 12px; }
@@ -121,7 +121,7 @@
 .sm-opt input { width: 18px; height: 18px; accent-color: var(--green); margin: 0; flex-shrink: 0; }
 .sm-opt .m { flex-grow: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .sm-opt .m b { font-size: 15px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.sm-opt .m span { font-size: 13px; color: var(--ink-2); }
+.sm-opt .m > span { font-size: 13px; color: var(--ink-2); }
 .sm-opt .m em { font-style: normal; font-size: 12px; font-weight: 600; color: #8A4200; }
 .sm-opt.emergency { border-color: #F0D3B4; background: #FFF8F0; }
 .sm-opt.no { cursor: default; opacity: 0.7; padding: 8px 13px; }
@@ -208,3 +208,27 @@ details.sm-more .stack { gap: 6px; }
 .rot-cell.none .s, .rot-cell.none .d { color: #A12E17; }
 .rot-cell.off { background: var(--cream-2); border-color: transparent; color: var(--muted-2); }
 .linkbtn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; }
+
+/* okno dne v Plánování směn: tři stavy vedle sebe, i na úzkém telefonu */
+.av-states { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; background: var(--line-2); border-radius: 12px; }
+.av-states label { position: relative; }
+.av-states input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.av-states span { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; padding: 6px 4px; border-radius: 9px; font-size: 15px; font-weight: 700; color: var(--muted); text-align: center; line-height: 1.2; cursor: pointer; }
+.av-states small { font-size: 11.5px; font-weight: 600; }
+.av-states input:checked + span { background: var(--green); color: #fff; }
+.av-states input:focus-visible + span { outline: 2px solid var(--green); outline-offset: 1px; }
+.sm-table td.we { background: #FBF4EE; }
+/* Provozy: když se tabulka nevejde do karty (telefon i dvě karty vedle sebe na počítači), řádky jdou pod sebe */
+.sm-venue { container-type: inline-size; }
+@container (max-width: 640px) {
+  .sm-table.stackable thead { display: none; }
+  .sm-table.stackable tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--line-2); }
+  .sm-table.stackable tr.sub { border-top: 0; padding-top: 0; }
+  .sm-table.stackable td { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; white-space: normal !important; }
+  .sm-table.stackable td.we { background: none; }
+  .sm-table.stackable td[data-label]::before { content: attr(data-label); width: 74px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .sm-table.stackable input[type="time"] { flex: 1 1 0; min-width: 0; height: 42px; }
+  .sm-table.stackable input[type="number"] { height: 42px; }
+}
+.sm-opt .m b .sm-chip { font-size: 12px; }
+@media (max-width: 899px) { .sm-tabs a { flex: 1 1 auto; padding: 9px 8px; font-size: 13.5px; } }
