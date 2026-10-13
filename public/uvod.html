@@ -25,7 +25,7 @@
 <script>
 (async () => {
   const me = await BC.init({ active: 'uvod' });
-  const [{ documents }, { links: allLinks }] = await Promise.all([BC.api('documents'), BC.api('links')]);
+  const [{ documents, headingOrder }, { links: allLinks }] = await Promise.all([BC.api('documents'), BC.api('links')]);
   const { esc } = BC;
   const sections = BC.meta.sections.filter((s) => !s.public);
   const params = new URLSearchParams(location.search);
@@ -59,7 +59,7 @@
   function renderSection() {
     const docs = documents.filter((d) => d.section === current);
     const links = allLinks.filter((l) => l.section === current);
-    const headings = [...new Set([...docs, ...links].map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+    const headings = BC.headingsOf([...docs, ...links], current, headingOrder);
     document.querySelectorAll('#secFilter a').forEach((a) => { a.classList.toggle('active', a.dataset.s === current); a.toggleAttribute('aria-current', a.dataset.s === current); });
     document.getElementById('secBody').innerHTML = docs.length || links.length ? headings.map((h) => `
       <div class="label">${esc(h)}</div>

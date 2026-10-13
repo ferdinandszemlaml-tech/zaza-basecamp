@@ -108,6 +108,14 @@ async function nextOrder(section, heading) {
   const all = [...(await loadDocs()), ...(await loadLinks())].filter((x) => x.section === section && x.heading === heading);
   return all.reduce((m, x) => Math.max(m, x.order ?? -1), -1) + 1;
 }
+// Pořadí nadpisů v sekci: { sectionId: ['Nadpis', ...] }. Nadpisy mimo seznam jdou za ně, abecedně.
+const loadHeadingOrder = () => getJSON('headings', {});
+const saveHeadingOrder = (v) => setJSON('headings', v);
+function headingCmp(order, section) {
+  const list = order[section] ?? [];
+  const idx = (h) => { const i = list.indexOf(h); return i < 0 ? Infinity : i; };
+  return (a, b) => (idx(a) - idx(b)) || a.localeCompare(b, 'cs');
+}
 // Položky bez pořadí (nahrané před zavedením řazení) jdou první, abecedně.
 const byOrder = (a, b) => ((a.order ?? -1) - (b.order ?? -1)) || a.title.localeCompare(b.title, 'cs');
 function versionLabel(v) {
@@ -429,9 +437,10 @@ const ROUTES = {
   // ── dokumenty pro zaměstnance ──
   'GET documents': async (req) => {
     const u = await requireUser(req);
-    const [docs, reads] = await Promise.all([loadDocs(), loadReads(u.id)]);
+    const [docs, reads, headingOrder] = await Promise.all([loadDocs(), loadReads(u.id), loadHeadingOrder()]);
     const m = readMap(reads);
     return json(200, {
+      headingOrder,
       documents: docs.map((d) => ({
         id: d.id, section: d.section, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null, mandatoryFor: d.mandatoryFor,
         mandatory: isMandatory(d, u),
@@ -492,10 +501,13 @@ const ROUTES = {
   // ── veřejná sekce Nový zaměstnanec (bez přihlášení, bez evidence) ──
   'GET public/documents': async () => {
     const links = (await loadLinks()).filter(isPublicDoc).map(publicLink);
+    const headingOrder = await loadHeadingOrder();
+    const hc = headingCmp(headingOrder, SECTIONS.find((s) => s.public).id);
     const docs = (await loadDocs()).filter(isPublicDoc)
-      .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || byOrder(a, b));
+      .sort((a, b) => hc(a.heading, b.heading) || byOrder(a, b));
     return json(200, {
       section: SECTIONS.find((s) => s.public),
+      headingOrder,
       links,
       documents: docs.map((d) => ({
         id: d.id, heading: d.heading, title: d.title, description: d.description ?? '', order: d.order ?? null,
@@ -609,9 +621,31 @@ const ROUTES = {
     if (to !== from) {
       const start = all.filter((x) => x.heading === to).reduce((m, x) => Math.max(m, x.order ?? -1), -1) + 1;
       moving.forEach((x, i) => { x.heading = to; x.order = start + i; });
+      const order = await loadHeadingOrder();
+      const list = order[section] ?? [];
+      if (list.includes(from)) {
+        order[section] = list.includes(to) ? list.filter((h) => h !== from) : list.map((h) => (h === from ? to : h));
+        await saveHeadingOrder(order);
+      }
       await Promise.all([saveDocs(docs), saveLinks(links)]);
     }
     return json(200, { ok: true, merged: all.some((x) => x.heading === to && !moving.includes(x)) });
+  },
+
+  // Pořadí nadpisů v sekci (seznam názvů, jak mají jít za sebou).
+  'POST admin/headings/order': async (req) => {
+    await requireAdmin(req);
+    const b = await body(req);
+    const section = String(b.section ?? '');
+    if (!SECTION_IDS.includes(section)) bad('Neznámá sekce.');
+    const hs = Array.isArray(b.headings) ? b.headings.map((h) => String(h ?? '').trim()).filter(Boolean) : [];
+    if (!hs.length || hs.length > 200 || new Set(hs).size !== hs.length) bad('Neplatné pořadí nadpisů.');
+    const existing = new Set([...(await loadDocs()), ...(await loadLinks())].filter((x) => x.section === section).map((x) => x.heading));
+    if (hs.some((h) => !existing.has(h))) bad('Některý nadpis mezitím zmizel. Obnov stránku.');
+    const order = await loadHeadingOrder();
+    order[section] = hs;
+    await saveHeadingOrder(order);
+    return json(200, { ok: true });
   },
 
   'PATCH admin/links/:id': async (req, { id }) => {
@@ -874,9 +908,10 @@ const ROUTES = {
     await requireAdmin(req);
     const section = url.searchParams.get('section') || SECTION_IDS[0];
     if (!SECTION_IDS.includes(section) || PUBLIC_IDS.includes(section)) bad('Neznámá sekce.');
-    const [users, allDocs, links] = await Promise.all([loadUsers(), loadDocs(), loadLinks()]);
+    const [users, allDocs, links, headingOrder] = await Promise.all([loadUsers(), loadDocs(), loadLinks(), loadHeadingOrder()]);
+    const hc = headingCmp(headingOrder, section);
     const docs = trackables(allDocs, links).filter((d) => d.section === section)
-      .sort((a, b) => a.heading.localeCompare(b.heading, 'cs') || byOrder(a, b));
+      .sort((a, b) => hc(a.heading, b.heading) || byOrder(a, b));
     const active = users.filter((u) => u.active);
     const rows = await Promise.all(active.map(async (u) => {
       const m = readMap(await loadReads(u.id));

@@ -23,8 +23,8 @@
 <script>
 (async () => {
   const { esc } = BC;
-  const { section, documents, links } = await BC.api('public/documents', { allow401: true });
-  const headings = [...new Set([...documents, ...links].map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+  const { section, documents, links, headingOrder } = await BC.api('public/documents', { allow401: true });
+  const headings = BC.headingsOf([...documents, ...links], section.id, headingOrder);
   const link = (v, cls) => `<a class="${cls}" href="/api/public/files/${esc(v.id)}" target="_blank" rel="noopener">${v.ext === 'pdf' ? 'Otevřít' : 'Stáhnout'}</a>`;
 
   document.getElementById('main').innerHTML = `

@@ -93,7 +93,7 @@
   const titleIn = document.getElementById('title');
 
   function fillHeadings() {
-    const hs = [...new Set([...documents, ...links].filter((d) => d.section === secSel.value).map((d) => d.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+    const hs = BC.headingsOf([...documents, ...links].filter((d) => d.section === secSel.value), secSel.value, headingOrder);
     const keep = headSel.value;
     headSel.innerHTML = hs.map((h) => `<option>${esc(h)}</option>`).join('') + '<option value="__new">+ Nový nadpis…</option>';
     headSel.value = hs.includes(keep) ? keep : (hs[0] ?? '__new');
@@ -203,8 +203,10 @@
   });
 
   let groups = {};
+  let headingGroups = {};
+  let headingOrder = {};
   // Výběr nadpisu v úpravě položky (existující nadpisy sekce + nový).
-  const headingsOf = (sectionId) => [...new Set([...documents, ...links].filter((x) => x.section === sectionId).map((x) => x.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
+  const headingsOf = (sectionId) => BC.headingsOf([...documents, ...links].filter((x) => x.section === sectionId), sectionId, headingOrder);
   const headingPicker = (x) => `<div class="field"><label>Nadpis<select class="input" name="headingSel" data-hsel>
       ${headingsOf(x.section).map((h) => `<option${h === x.heading ? ' selected' : ''}>${esc(h)}</option>`).join('')}
       <option value="__new">+ Nový nadpis…</option></select></label>
@@ -290,12 +292,16 @@
       const docs = documents.filter((d) => d.section === s.id);
       const lks = links.filter((l) => l.section === s.id);
       if (!docs.length && !lks.length) return '';
-      const headings = [...new Set([...docs, ...lks].map((x) => x.heading))].sort((a, b) => a.localeCompare(b, 'cs'));
-      return `<div class="label" style="margin-top:14px"><span class="sec" data-sec="${s.id}" style="font-size:12px">${esc(s.name)}</span></div>` + headings.map((h) => {
+      const headings = BC.headingsOf([...docs, ...lks], s.id, headingOrder);
+      headingGroups[s.id] = headings;
+      return `<div class="label" style="margin-top:14px"><span class="sec" data-sec="${s.id}" style="font-size:12px">${esc(s.name)}</span></div>` + headings.map((h, hi) => {
         const items = BC.mergeItems(docs, lks, h);
         const key = `${s.id}|${h}`;
         groups[key] = items.map((x) => x.id);
-        return `<div class="row" style="margin:6px 0 -4px;gap:6px"><h3 class="heading-label" style="margin:0">${esc(h)}</h3><button type="button" class="btn small ghost" data-rename data-section="${s.id}" data-heading="${esc(h)}" style="color:var(--green);height:32px;padding:0 8px;font-size:13px">${BC.icon('edit', 15)}Přejmenovat</button></div>` + items.map((x, i) => {
+        const hmv = headings.length > 1 ? `<span class="row" style="gap:2px;margin-left:auto">
+          <button type="button" class="icon-btn move-btn" data-hmove="-1" data-section="${s.id}" data-heading="${esc(h)}" ${hi === 0 ? 'disabled' : ''} aria-label="Posunout nadpis výš">${BC.icon('up', 20)}</button>
+          <button type="button" class="icon-btn move-btn" data-hmove="1" data-section="${s.id}" data-heading="${esc(h)}" ${hi === headings.length - 1 ? 'disabled' : ''} aria-label="Posunout nadpis níž">${BC.icon('down', 20)}</button></span>` : '';
+        return `<div class="row" style="margin:6px 0 -4px;gap:6px"><h3 class="heading-label" style="margin:0">${esc(h)}</h3><button type="button" class="btn small ghost" data-rename data-section="${s.id}" data-heading="${esc(h)}" style="color:var(--green);height:32px;padding:0 8px;font-size:13px">${BC.icon('edit', 15)}Přejmenovat</button>${hmv}</div>` + items.map((x, i) => {
           const mv = items.length > 1 ? moveBtns(key, x.id, i, items.length) : '';
           return x.kind === 'link' ? linkCardAdmin(x, s, mv) : docCardAdmin(x, s, mv);
         }).join('');
@@ -344,6 +350,16 @@
     if (df) {
       if (!confirm(`Odebrat soubor „${df.dataset.label}“ z této verze?`)) return;
       try { await BC.api(`admin/files/${df.dataset.delfile}`, { method: 'DELETE' }); BC.toast('Soubor je odebraný.'); await load(); }
+      catch (ex) { BC.toast(ex.message, true); }
+      return;
+    }
+    const hm = e.target.closest('[data-hmove]');
+    if (hm) {
+      const list = [...(headingGroups[hm.dataset.section] ?? [])];
+      const i = list.indexOf(hm.dataset.heading); const j = i + Number(hm.dataset.hmove);
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      try { await BC.api('admin/headings/order', { method: 'POST', body: { section: hm.dataset.section, headings: list } }); await load(); }
       catch (ex) { BC.toast(ex.message, true); }
       return;
     }
@@ -465,7 +481,8 @@
   });
 
   async function load() {
-    [documents, links] = await Promise.all([BC.api('documents').then((r) => r.documents), BC.api('links').then((r) => r.links)]);
+    const [docRes, linkRes] = await Promise.all([BC.api('documents'), BC.api('links')]);
+    documents = docRes.documents; links = linkRes.links; headingOrder = docRes.headingOrder ?? {};
     fillHeadings();
     renderList();
   }

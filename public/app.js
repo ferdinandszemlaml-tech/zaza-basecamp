@@ -121,6 +121,12 @@ const BC = (() => {
     ...docs.filter((d) => d.heading === h).map((d) => ({ ...d, kind: 'doc' })),
     ...links.filter((l) => l.heading === h).map((l) => ({ ...l, kind: 'link' })),
   ].sort(byOrder);
+  // Nadpisy sekce v nastaveném pořadí (zbylé abecedně). order = headingOrder z /api/documents.
+  const headingsOf = (items, section, order) => {
+    const list = order?.[section] ?? [];
+    const idx = (h) => { const i = list.indexOf(h); return i < 0 ? Infinity : i; };
+    return [...new Set(items.map((x) => x.heading))].sort((a, b) => (idx(a) - idx(b)) || a.localeCompare(b, 'cs'));
+  };
   const telHref = (p) => `tel:${String(p).replace(/[^0-9+]/g, '')}`;
   const posChips = (list) => list.map((p) => `<span class="chip" data-pos="${esc(p)}">${esc(positionName(p))}</span>`).join('');
 
@@ -232,6 +238,6 @@ const BC = (() => {
 
   return {
     api, init, esc, icon, mark, toast, fmtDate, fmtShort, fileType, initials, firstName, displayName, who, whoMatch, fileLink, adminTabs, posChips,
-    trackOpens, fail, filesLabel, filesList, telHref, linkKind, linkCard, byOrder, mergeItems, sectionName, positionName, get meta() { return meta; },
+    trackOpens, fail, filesLabel, filesList, telHref, linkKind, linkCard, byOrder, mergeItems, headingsOf, sectionName, positionName, get meta() { return meta; },
   };
 })();
