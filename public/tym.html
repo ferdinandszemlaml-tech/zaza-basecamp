@@ -13,6 +13,7 @@
 .call:hover { background: #083A35; color: #fff; }
 .num { font-size: 15px; font-weight: 700; color: var(--green); text-decoration: none; }
 .nophone { font-size: 13px; color: var(--muted-2); }
+.addr { font-size: 13px; color: var(--muted); line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -49,7 +50,8 @@
         <span class="avatar" style="width:42px;height:42px;font-size:14px">${esc(BC.initials(m.name))}</span>
         <span class="item-main"><span class="item-title">${BC.who(m)}</span>
           <span class="item-sub">${m.positions.map(BC.positionName).map(esc).join(' · ') || (m.role === 'admin' ? 'Vedení' : m.role === 'provozni' ? 'Provozní' : '')}</span>
-          ${m.phone ? `<a class="num" href="${BC.telHref(m.phone)}">${esc(m.phone)}</a>` : '<span class="nophone">bez čísla</span>'}</span>
+          ${m.phone ? `<a class="num" href="${BC.telHref(m.phone)}">${esc(m.phone)}</a>` : '<span class="nophone">bez čísla</span>'}
+          ${m.address ? `<span class="addr"><span style="display:inline-flex;align-items:center;gap:4px">${BC.icon('home', 14)}${esc(m.address.split(/\n/)[0])}</span>${m.address.includes('\n') ? `<br>${esc(m.address.split(/\n/).slice(1).join(', '))}` : ''}</span>` : ''}</span>
         ${m.phone ? `<a class="call" href="${BC.telHref(m.phone)}" aria-label="Zavolat ${esc(BC.displayName(m))}">${BC.icon('phone', 22)}</a>` : ''}
       </div>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
   }

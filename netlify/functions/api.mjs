@@ -72,6 +72,18 @@ function phone(v) {
   if (!/^\+?[0-9 ()-]+$/.test(p) || digits.length < 9 || digits.length > 15) bad('Zadej platné telefonní číslo, např. +420 777 123 456.');
   return p;
 }
+// Kde teď bydlí (přechodné bydliště) a velikost trička – vyplňuje si zaměstnanec sám.
+const TSHIRT_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
+function address(v) {
+  const a = String(v ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
+  if (a.length > 200) bad('Adresa je příliš dlouhá (max. 200 znaků).');
+  return a;
+}
+function tshirt(v) {
+  const t = String(v ?? '').trim().toUpperCase();
+  if (t && !TSHIRT_SIZES.includes(t)) bad('Vyber velikost trička ze seznamu.');
+  return t;
+}
 function positions(list) {
   const arr = Array.isArray(list) ? list : [];
   if (arr.some((p) => !POSITION_IDS.includes(p))) bad('Neznámá pozice.');
@@ -108,7 +120,7 @@ async function body(req) {
 }
 
 const publicUser = (u) => ({
-  id: u.id, name: u.name, nick: u.nick ?? '', username: u.username, email: u.email, phone: u.phone ?? '', role: u.role,
+  id: u.id, name: u.name, nick: u.nick ?? '', username: u.username, email: u.email, phone: u.phone ?? '', address: u.address ?? '', tshirt: u.tshirt ?? '', role: u.role,
   positions: u.positions, active: u.active, createdAt: u.createdAt, hasPassword: Boolean(u.passwordHash),
 });
 
@@ -328,28 +340,33 @@ const ROUTES = {
       user: publicUser(u),
       unread: stats.missing,
       availTodo: avail,
-      meta: { sections: SECTIONS, positions: POSITIONS, defaultMandatory: DEFAULT_MANDATORY, maxFileBytes: MAX_FILE_BYTES },
+      meta: { sections: SECTIONS, positions: POSITIONS, defaultMandatory: DEFAULT_MANDATORY, maxFileBytes: MAX_FILE_BYTES, tshirtSizes: TSHIRT_SIZES },
     });
   },
 
-  // Zaměstnanec si sám upravuje telefon.
+  // Zaměstnanec si sám upravuje přezdívku, telefon, adresu a velikost trička.
   'PATCH me': async (req) => {
     const me = await requireUser(req);
     const b = await body(req);
     const users = await loadUsers();
     const u = users.find((x) => x.id === me.id);
+    if (b.nick !== undefined) { u.nick = nickname(b.nick); nickClash(users, u.nick, u.id); }
     if (b.phone !== undefined) u.phone = phone(b.phone);
+    if (b.address !== undefined) u.address = address(b.address);
+    if (b.tshirt !== undefined) u.tshirt = tshirt(b.tshirt);
     await saveUsers(users);
     return json(200, { ok: true, user: publicUser(u) });
   },
 
-  // Kontakty na celý tým – vidí všichni přihlášení.
+  // Kontakty na celý tým – vidí všichni přihlášení. Adresu (přechodné bydliště) jen admin a provozní.
   'GET team': async (req) => {
-    await requireUser(req);
+    const me = await requireUser(req);
+    const lead = me.role === 'admin' || me.role === 'provozni';
     const users = (await loadUsers()).filter((u) => u.active);
     users.sort((a, b) => (a.nick || a.name).localeCompare(b.nick || b.name, 'cs'));
     return json(200, {
-      team: users.map((u) => ({ id: u.id, name: u.name, nick: u.nick ?? '', positions: u.positions, phone: u.phone ?? '', role: u.role })),
+      showAddress: lead,
+      team: users.map((u) => ({ id: u.id, name: u.name, nick: u.nick ?? '', positions: u.positions, phone: u.phone ?? '', role: u.role, ...(lead ? { address: u.address ?? '' } : {}) })),
     });
   },
 
@@ -749,6 +766,8 @@ const ROUTES = {
       u.email = e;
     }
     if (b.phone !== undefined) u.phone = phone(b.phone);
+    if (b.address !== undefined) u.address = address(b.address);
+    if (b.tshirt !== undefined) u.tshirt = tshirt(b.tshirt);
     if (b.positions !== undefined) u.positions = positions(b.positions);
     if (b.role !== undefined) u.role = roleOf(b.role);
     if (b.active !== undefined && Boolean(b.active) !== u.active) {
