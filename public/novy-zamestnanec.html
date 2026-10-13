@@ -6,7 +6,6 @@
 <title>Nový zaměstnanec · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <style>
 .bc-main { padding-bottom: 48px; }
@@ -29,8 +28,8 @@
   const link = (v, cls) => `<a class="${cls}" href="/api/public/files/${esc(v.id)}" target="_blank" rel="noopener">${v.ext === 'pdf' ? 'Otevřít' : 'Stáhnout'}</a>`;
 
   document.getElementById('main').innerHTML = `
-    <div class="stack" style="gap:8px">
-      <span class="sec" data-sec="${esc(section.id)}">Před zkušební směnou</span>
+    <div class="page-head">
+      <span class="sec" data-sec="${esc(section.id)}" style="align-self:center">Před zkušební směnou</span>
       <h1>${esc(section.name)}</h1>
       <p class="lead">Vítej v ZaZa! Tady najdeš dokumenty, které je potřeba si přečíst nebo vyplnit ještě před zkušební směnou. PDF se otevře v prohlížeči, Word a Excel se stáhnou.</p>
     </div>

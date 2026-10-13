@@ -146,17 +146,33 @@ const BC = (() => {
       ...(shifts ? [{ id: 'smeny', href: '/smeny.html', label: 'Směny', icon: 'calendar' }] : []),
     ];
     const badge = (n) => (n ? `<span class="badge" aria-label="${n} nepřečtených">${n}</span>` : '');
+    // Pravý horní roh: přezdívka nebo křestní jméno, pod tím pozice a role, vedle Odhlásit.
+    const u = me.user;
+    const roleTxt = u.role === 'admin' ? 'admin' : u.role === 'provozni' ? 'provozní' : '';
+    const posTxt = u.positions.slice(0, 2).map(positionName).join(' · ');
+    const sub = [posTxt, roleTxt].filter(Boolean).join(' · ') || 'Zaměstnanec';
+    // na telefonu je místo jen na jednu pozici
+    const subShort = [u.positions.length ? positionName(u.positions[0]) : '', roleTxt].filter(Boolean).join(' · ') || 'Zaměstnanec';
     const header = document.createElement('header');
     header.className = 'bc-header';
-    header.innerHTML = `<a class="bc-logo" href="/uvod.html"><b>ZAZA</b><span>BaseCamp</span></a>
+    header.innerHTML = `<a class="bc-logo" href="/uvod.html"><b>ZaZa</b><span>BaseCamp</span></a>
       <nav class="bc-topnav" aria-label="Hlavní menu">${items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}>${i.label}${badge(i.badge)}</a>`).join('')}</nav>
-      <a class="bc-avatar" href="/profil.html" aria-label="Můj profil">${esc(initials(me.user.name))}</a>`;
+      <div class="bc-user"><a class="bc-who" href="/profil.html" aria-label="Můj profil"><b>${esc(u.nick || firstName(u.name))}</b><span class="full">${esc(sub)}</span><span class="short">${esc(subShort)}</span></a>
+      <button type="button" class="bc-logout" id="bcLogout">Odhlásit</button></div>`;
     document.body.prepend(header);
+    header.querySelector('#bcLogout').addEventListener('click', async () => {
+      try { await api('logout', { method: 'POST', allow401: true }); } catch {}
+      location.href = '/';
+    });
     const tabbar = document.createElement('nav');
     tabbar.className = 'bc-tabbar';
     tabbar.setAttribute('aria-label', 'Hlavní menu');
-    tabbar.innerHTML = items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}>${icon(i.icon, 24)}${i.short ?? i.label}${badge(i.badge)}</a>`).join('');
+    tabbar.innerHTML = items.map((i) => `<a href="${i.href}" class="${i.id === active ? 'active' : ''}"${i.id === active ? ' aria-current="page"' : ''}><span class="tab-ico">${icon(i.icon, 20)}</span>${i.short ?? i.label}${badge(i.badge)}</a>`).join('');
     document.body.append(tabbar);
+    const foot = document.createElement('footer');
+    foot.className = 'bc-foot';
+    foot.innerHTML = '<span>ZaZa Brno</span>';
+    document.body.append(foot);
     // Úvod: připomínka nevyplněného plánování směn (místo e-mailu)
     const todo = me.availTodo?.[0];
     if (active === 'uvod' && todo) {

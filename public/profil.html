@@ -6,8 +6,12 @@
 <title>Můj profil · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
+<style>
+.pgrid { display: flex; flex-direction: column; gap: 14px; }
+.pgrid .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (min-width: 900px) { .pgrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start; } .pgrid .col { gap: 16px; } }
+</style>
 </head>
 <body>
 <main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
@@ -26,13 +30,14 @@
     <span class="small muted">${BC.fmtDate(r.at)}</span></div>`;
 
   document.getElementById('main').innerHTML = `
-    <div class="row" style="gap:16px">
-      <div class="avatar" style="width:64px;height:64px;font-size:22px">${esc(BC.initials(u.name))}</div>
-      <div class="stack" style="gap:2px"><h1 style="font-size:24px">${BC.who(u)}</h1><span class="muted small">${esc(u.username)}${u.role === 'admin' ? ' · admin' : u.role === 'provozni' ? ' · provozní' : ''}</span></div>
+    <div class="page-head">
+      <div class="avatar" style="width:72px;height:72px;font-size:24px">${esc(BC.initials(u.name))}</div>
+      <h1 style="font-size:${u.nick ? 34 : 30}px">${BC.who(u)}</h1><span class="muted">${esc(u.username)}${u.role === 'admin' ? ' · admin' : u.role === 'provozni' ? ' · provozní' : ''}</span>
+      ${u.positions.length ? `<div class="chips" style="justify-content:center">${BC.posChips(u.positions)}</div>` : ''}
     </div>
-    ${u.positions.length ? `<div class="chips">${BC.posChips(u.positions)}</div>` : ''}
+    <div class="pgrid"><div class="col">
     <div class="card card-pad stack" style="gap:14px">
-      <div class="label" style="margin:0">Moje údaje</div>
+      <h2 style="font-size:24px">Moje údaje</h2>
       <form class="stack" id="meForm" novalidate style="gap:12px">
         <div class="error" id="meErr" role="alert" hidden></div>
         <div class="field"><label for="nick">Přezdívka <span class="muted" style="font-weight:400">(nepovinné)</span></label>
@@ -60,13 +65,15 @@
         <div class="row" style="gap:8px"><button class="btn small" type="submit" id="pwSave" style="height:46px">Uložit nové heslo</button><button type="button" class="btn small ghost" id="pwCancel" style="color:var(--muted);height:46px">Zrušit</button></div>
       </form>
     </div>
-    <div class="label">Přečtené dokumenty</div>
+    </div><div class="col">
+    <h2 style="font-size:24px">Přečtené dokumenty</h2>
     ${reads.length ? `<div class="card" id="reads">${reads.slice(0, SHOW).map(readRow).join('')}</div>
       ${reads.length > SHOW ? `<button type="button" class="btn small soft" id="more" style="align-self:center">Zobrazit vše (${reads.length})</button>` : ''}`
       : '<div class="card empty">Zatím jsi nic neotevřel/a.</div>'}
 
-    <div class="spacer" style="min-height:16px"></div>
-    <button type="button" class="btn outline block" id="logout" style="border-color:var(--coral-dark);color:var(--coral-dark)">${BC.icon('back', 20)}Odhlásit se</button>
+    <div class="spacer" style="min-height:4px"></div>
+    <button type="button" class="btn outline block" id="logout" style="border:2px solid var(--coral);color:var(--coral-dark);background:#fff">${BC.icon('back', 20)}Odhlásit se</button>
+    </div></div>
   `;
 
   document.getElementById('meForm').addEventListener('submit', async (e) => {

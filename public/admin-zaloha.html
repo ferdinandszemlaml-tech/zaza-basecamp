@@ -6,7 +6,6 @@
 <title>Záloha · Admin · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <style>
 .steps { display: flex; flex-direction: column; gap: 8px; }
@@ -32,7 +31,7 @@
 
   main.innerHTML = `
     ${BC.adminTabs('zaloha')}
-    <h1>Záloha dat</h1>
+    <div class="page-head"><h1>Záloha dat</h1></div>
     <div class="card card-pad stack" style="gap:12px">
       <p style="margin:0">Stáhne jeden ZIP se vším, co v BaseCampu je: účty, dokumenty se všemi verzemi a soubory, odkazy, evidence čtení i nastavení a rozpisy Směn. Ze zálohy jde všechno obnovit, kdyby se něco smazalo nebo kdyby přestalo fungovat úložiště.</p>
       <div class="kv" id="stats"><span>Načítám přehled…</span><span></span></div>

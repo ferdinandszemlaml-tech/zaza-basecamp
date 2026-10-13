@@ -6,7 +6,7 @@
 .sm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .sm-month { display: flex; align-items: center; gap: 10px; }
 .sm-month h1 { min-width: 170px; text-align: center; }
-.sm-nav-btn { width: 44px; height: 44px; border: 1.5px solid var(--field); border-radius: 12px; background: #fff; color: var(--green); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
+.sm-nav-btn { width: 44px; height: 44px; border: 1.5px solid var(--line); border-radius: 999px; background: #fff; color: var(--green); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
 .sm-nav-btn:hover { background: var(--green-soft); }
 .sm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .sm-status { padding: 6px 12px; border-radius: 20px; background: var(--green-soft); color: var(--green); font-size: 13px; font-weight: 700; }
@@ -39,7 +39,7 @@
 .sm-dayhead span { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
 .sm-dayhead .nolead { display: block; margin-top: 2px; font-size: 10px; letter-spacing: 0; text-transform: none; color: #A12E17; }
 .sm-group { display: flex; align-items: baseline; gap: 10px; padding: 12px 2px 0; }
-.sm-group b { font-family: var(--display); font-size: 17px; color: var(--green); }
+.sm-group b { font-family: var(--display); font-weight: 800; font-size: 17px; color: var(--green); }
 .sm-group.g-kitchen b { color: var(--coral-dark); }
 .sm-group.g-little b { color: #1A33CC; }
 .sm-group span { font-size: 12px; color: var(--muted); }

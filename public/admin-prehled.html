@@ -6,7 +6,6 @@
 <title>Přehled seznámení · Admin · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <style>
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-2); }
@@ -17,7 +16,7 @@
 .count-ok { color: var(--ok-text); font-weight: 700; }
 .count-no { color: var(--no-text); font-weight: 700; }
 .views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.views button { padding: 12px 10px; border-radius: 14px; border: 1.5px solid #E0D9CD; background: #fff; color: var(--ink-2); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.views button { padding: 9px 10px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; letter-spacing: 1px; cursor: pointer; }
 .views button[aria-selected="true"] { background: var(--green); border-color: var(--green); color: #fff; }
 .pcard { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .pcard-top { display: flex; align-items: center; gap: 12px; }
@@ -33,7 +32,7 @@
 .miss button { border: 0; background: none; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 5px 4px; }
 .allok { color: var(--ok-text); font-size: 13px; font-weight: 700; }
 @media (max-width: 600px) { #q { width: 100% !important; } #onlyWrap { width: 100%; } }
-@media (min-width: 900px) { .views { width: fit-content; grid-template-columns: repeat(3, auto); } .views button { padding: 10px 18px; } }
+@media (min-width: 900px) { .views { width: fit-content; margin: 0 auto; grid-template-columns: repeat(3, auto); } .views button { padding: 9px 22px; font-size: 16px; } }
 </style>
 </head>
 <body>
@@ -53,8 +52,8 @@
 
   main.innerHTML = `
     ${BC.adminTabs('prehled')}
-    <div class="row" style="flex-wrap:wrap;align-items:flex-end"><h1>Přehled seznámení</h1><span class="spacer"></span>
-      <div class="legend" id="legend"><span>${BC.mark('ok')}přečteno</span><span>${BC.mark('no')}povinné, nepřečtené</span><span>${BC.mark('na')}nepovinné</span></div></div>
+    <div class="page-head"><h1>Přehled seznámení</h1></div>
+    <div class="row" style="flex-wrap:wrap;justify-content:center"><div class="legend" id="legend"><span>${BC.mark('ok')}přečteno</span><span>${BC.mark('no')}povinné, nepřečtené</span><span>${BC.mark('na')}nepovinné</span></div></div>
     <div class="views" role="tablist" aria-label="Pohled">
       <button type="button" role="tab" data-view="lide">Kdo co nemá</button>
       <button type="button" role="tab" data-view="dokumenty">Podle dokumentu</button>

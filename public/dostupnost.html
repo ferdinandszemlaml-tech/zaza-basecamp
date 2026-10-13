@@ -6,7 +6,6 @@
 <title>Plánování směn · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <link rel="stylesheet" href="/smeny.css">
 <style>
@@ -116,7 +115,7 @@
   function render() {
     const noteList = Object.entries(notes).sort((a, b) => a[0] - b[0]);
     main.innerHTML = `
-      <div class="row" style="justify-content:space-between;align-items:baseline"><h1>Plánování směn</h1><a href="/dostupnost-tym.html?m=${month}" class="small" style="font-weight:700">Kdo kdy může</a></div>
+      <div class="page-head"><h1>Plánování směn</h1><a href="/dostupnost-tym.html?m=${month}" class="underline-link">Kdo kdy může</a></div>
       <nav class="av-months" aria-label="Měsíc">${data.months.map((m) => `<a href="?m=${m.month}" class="${m.month === month ? 'active' : ''} ${m.status}"${m.month === month ? ' aria-current="page"' : ''}>
         <b>${esc(mName(m.month))}</b><span>${m.status === 'open' ? `do ${fmt(m.deadline)}` : m.status === 'pending' ? `od ${fmt(m.opens)}` : 'uzavřeno'}</span></a>`).join('')}</nav>
       ${statusCard()}

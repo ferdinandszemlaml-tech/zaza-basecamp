@@ -6,7 +6,6 @@
 <title>Dokumenty · Admin · ZaZa BaseCamp</title>
 <meta name="theme-color" content="#0B4A44">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
 <link rel="stylesheet" href="/styles.css">
 <style>
 .drop { border: 1.5px dashed var(--green); border-radius: 14px; background: #fff; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
@@ -38,7 +37,7 @@
       <button type="button" role="tab" data-mode="edit" aria-selected="false">${BC.icon('edit', 20)}<span><b>Upravit stávající</b><small>verze, pořadí, mazání</small></span></button>
     </div>
     <section id="addView" class="stack" style="gap:16px">
-    <h1>Přidat do sekce</h1>
+    <div class="page-head"><h1>Přidat do sekce</h1></div>
     <form id="newDoc" class="stack" style="gap:16px" novalidate>
       <div class="segmented" role="radiogroup" aria-label="Co přidat">
         <button type="button" role="radio" data-kind="file" class="active" aria-checked="true">${BC.icon('file', 16)} Soubor</button>
@@ -77,7 +76,7 @@
     </form>
     </section>
     <section id="editView" class="stack" style="gap:12px" hidden>
-      <h1>Upravit stávající</h1>
+      <div class="page-head"><h1>Upravit stávající</h1></div>
       <nav class="filter" aria-label="Sekce" id="secFilter">
         <a href="#" data-f="" class="active" aria-current="true">Vše</a>
         ${meta.sections.map((s) => `<a href="#" data-f="${s.id}" data-sec="${s.id}">${esc(s.name)}</a>`).join('')}
