@@ -1,5 +1,5 @@
 // ZaZa-BaseCamp – jediná serverová funkce. Všechny adresy /api/* vedou sem.
-import { getJSON, setJSON, deleteJSON, getFile, setFile, deleteFile } from '../lib/store.mjs';
+import { getJSON, setJSON, deleteJSON, listKeys, getFile, setFile, deleteFile } from '../lib/store.mjs';
 import {
   hashPassword, verifyPassword, sessionCookie, clearCookie, readSession,
   newToken, hashToken, safeEqual, newId,
@@ -782,6 +782,33 @@ const ROUTES = {
     const kind = u.passwordHash ? 'reset' : 'welcome';
     const { sent, link } = await issuePasswordLink(req, u, kind, kind === 'welcome' ? WELCOME_TOKEN_HOURS : ADMIN_RESET_TOKEN_HOURS);
     return json(200, { ok: true, mailSent: sent, link: sent ? undefined : link });
+  },
+
+  // ── admin: záloha ──
+  // Všechna data v jednom JSON (bez dočasných klíčů) + seznam souborů. Soubory si záložní stránka
+  // stáhne jednotlivě přes admin/files/:id a složí ZIP v prohlížeči (odpověď funkce má limit velikosti).
+  'GET admin/backup': async (req) => {
+    await requireAdmin(req);
+    const keys = (await listKeys('')).filter((k) => k !== 'ratelimit' && k !== 'tokens');
+    const data = {};
+    await Promise.all(keys.map(async (k) => { data[k] = await getJSON(k, null); }));
+    const files = [];
+    for (const d of data.documents ?? []) {
+      for (const v of d.versions) for (const f of filesOf(v)) {
+        files.push({ id: f.id, name: f.fileName, ext: f.ext, size: f.size, docId: d.id, section: d.section, heading: d.heading, title: d.title, version: v.version, uploadedAt: v.uploadedAt });
+      }
+    }
+    return json(200, { exportedAt: new Date().toISOString(), site: new URL(req.url).origin, data, files });
+  },
+
+  // Soubor pro admina bez zápisu do evidence čtení (záloha, náhled).
+  'GET admin/files/:id': async (req, { id }) => {
+    await requireAdmin(req);
+    const found = findFile(await loadDocs(), id);
+    if (!found) throw new HttpError(404, 'Soubor neexistuje.');
+    const file = await getFile(found.f.id);
+    if (!file) throw new HttpError(404, 'Soubor se nenašel.');
+    return fileResponse(found.f, file);
   },
 
   // ── admin: souhrn napříč sekcemi (kdo co nemá / podle dokumentu) ──

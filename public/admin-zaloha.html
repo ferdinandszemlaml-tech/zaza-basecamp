@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Záloha · Admin · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+.steps { display: flex; flex-direction: column; gap: 8px; }
+.step { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.step b { color: var(--ink); font-weight: 600; }
+.step .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); flex-shrink: 0; }
+.step.run .dot { background: var(--coral); animation: pulse 1s infinite alternate; }
+.step.ok .dot { background: var(--ok); }
+@keyframes pulse { from { opacity: .4; } to { opacity: 1; } }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  await BC.init({ active: 'admin', admin: true });
+  const { esc } = BC;
+  const main = document.getElementById('main');
+  const fmtMB = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} kB`);
+
+  main.innerHTML = `
+    ${BC.adminTabs('zaloha')}
+    <h1>Záloha dat</h1>
+    <div class="card card-pad stack" style="gap:12px">
+      <p style="margin:0">Stáhne jeden ZIP se vším, co v BaseCampu je: účty, dokumenty se všemi verzemi a soubory, odkazy, evidence čtení i nastavení a rozpisy Směn. Ze zálohy jde všechno obnovit, kdyby se něco smazalo nebo kdyby přestalo fungovat úložiště.</p>
+      <div class="kv" id="stats"><span>Načítám přehled…</span><span></span></div>
+      <button type="button" class="btn block" id="go" disabled>${BC.icon('download', 20)}Stáhnout zálohu</button>
+      <div class="steps" id="steps" hidden></div>
+      <div class="success" id="done" hidden></div>
+      <div class="error" id="err" role="alert" hidden></div>
+    </div>
+    <div class="card card-pad stack" style="gap:8px">
+      <div class="label" style="margin:0">Jak s ní zacházet</div>
+      <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.5">
+        <li>Zálohu dělej <b>zhruba jednou za měsíc</b> a vždy před větším mazáním. Stačí ji uložit na disk nebo do cloudu, kam se dostaneš jen ty.</li>
+        <li>ZIP obsahuje <b>osobní údaje zaměstnanců</b> (jména, e-maily, telefony) a otisky hesel. Hesla v čitelné podobě tam nejsou, ale soubor nikomu neposílej a neukládej ho na sdílené místo.</li>
+        <li>Ve složce <code>dokumenty</code> jsou soubory tak, jak je znáš: podle sekce, nadpisu, názvu a verze. Složka <code>data</code> je pro obnovu systému.</li>
+        <li>Kdyby bylo potřeba něco obnovit, zálohu stačí poslat tomu, kdo BaseCamp spravuje.</li>
+      </ul>
+    </div>`;
+
+  const statsEl = document.getElementById('stats');
+  const btn = document.getElementById('go');
+  let info;
+  try {
+    info = await BC.api('admin/backup');
+    const d = info.data;
+    const totalBytes = info.files.reduce((s, f) => s + (f.size || 0), 0);
+    statsEl.innerHTML = [
+      ['Účty', (d.users ?? []).length],
+      ['Dokumenty', `${(d.documents ?? []).length} (${info.files.length} souborů, ${fmtMB(totalBytes)})`],
+      ['Odkazy a texty', (d.links ?? []).length],
+      ['Záznamy o čtení', Object.keys(d).filter((k) => k.startsWith('reads/')).reduce((s, k) => s + (d[k]?.length ?? 0), 0)],
+      ['Směny', `${Object.keys(d).filter((k) => k.startsWith('smeny/')).length} položek nastavení a rozpisů`],
+    ].map(([k, v]) => `<span>${esc(k)}</span><span><b>${esc(String(v))}</b></span>`).join('');
+    btn.disabled = false;
+  } catch (ex) {
+    statsEl.innerHTML = '';
+    const err = document.getElementById('err'); err.textContent = ex.message; err.hidden = false;
+    return;
+  }
+
+  // ── jednoduchý zápis ZIPu (bez komprese – PDF i Excel už komprimované jsou) ──
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u8) => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const enc = new TextEncoder();
+  function zipBuild(entries, when) {
+    const d = new Date(when);
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = []; const central = []; let offset = 0;
+    const u32 = (v, b, o) => { b.setUint32(o, v >>> 0, true); };
+    const u16 = (v, b, o) => { b.setUint16(o, v & 0xFFFF, true); };
+    for (const e of entries) {
+      const name = enc.encode(e.path); const data = e.data; const crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      u32(0x04034b50, lh, 0); u16(20, lh, 4); u16(0x0800, lh, 6); u16(0, lh, 8); u16(dosTime, lh, 10); u16(dosDate, lh, 12);
+      u32(crc, lh, 14); u32(data.length, lh, 18); u32(data.length, lh, 22); u16(name.length, lh, 26); u16(0, lh, 28);
+      const ch = new DataView(new ArrayBuffer(46));
+      u32(0x02014b50, ch, 0); u16(20, ch, 4); u16(20, ch, 6); u16(0x0800, ch, 8); u16(0, ch, 10); u16(dosTime, ch, 12); u16(dosDate, ch, 14);
+      u32(crc, ch, 16); u32(data.length, ch, 20); u32(data.length, ch, 24); u16(name.length, ch, 28); u16(0, ch, 30); u16(0, ch, 32);
+      u16(0, ch, 34); u16(0, ch, 36); u32(0, ch, 38); u32(offset, ch, 42);
+      parts.push(lh.buffer, name, data); central.push(ch.buffer, name);
+      offset += 30 + name.length + data.length;
+    }
+    const cdSize = central.reduce((s, p) => s + p.byteLength, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    u32(0x06054b50, end, 0); u16(0, end, 4); u16(0, end, 6); u16(entries.length, end, 8); u16(entries.length, end, 10); u32(cdSize, end, 12); u32(offset, end, 16); u16(0, end, 20);
+    return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+  }
+
+  const safe = (s) => String(s ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ').trim().replace(/\.+$/, '').slice(0, 80) || '_';
+  const stepsEl = document.getElementById('steps');
+  const steps = [];
+  const step = (label) => { const s = { label, state: 'run' }; steps.push(s); draw(); return s; };
+  const draw = () => { stepsEl.innerHTML = steps.map((s) => `<div class="step ${s.state}"><span class="dot"></span><b>${esc(s.label)}</b>${s.note ? `<span>${esc(s.note)}</span>` : ''}</div>`).join(''); };
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; stepsEl.hidden = false; steps.length = 0;
+    document.getElementById('done').hidden = true; document.getElementById('err').hidden = true;
+    const t0 = Date.now();
+    try {
+      let s = step('Stahuji data');
+      info = await BC.api('admin/backup');
+      s.state = 'ok'; s.note = `${Object.keys(info.data).length} položek`; draw();
+      const date = info.exportedAt.slice(0, 10);
+      const root = `zaza-basecamp-zaloha-${date}`;
+      const entries = [];
+      const sections = Object.fromEntries((BC.meta.sections ?? []).map((x) => [x.id, x.name]));
+      for (const [k, v] of Object.entries(info.data)) entries.push({ path: `${root}/data/${k}.json`, data: enc.encode(JSON.stringify(v, null, 2)) });
+
+      s = step(`Stahuji soubory (0/${info.files.length})`);
+      const used = new Set(); const manifest = []; const missing = [];
+      let n = 0;
+      // Po třech najednou, aby to šlo rychle a server to zvládl.
+      const queue = [...info.files];
+      async function worker() {
+        while (queue.length) {
+          const f = queue.shift();
+          const res = await fetch(`/api/admin/files/${encodeURIComponent(f.id)}`, { credentials: 'same-origin' });
+          n++; s.label = `Stahuji soubory (${n}/${info.files.length})`; draw();
+          if (!res.ok) { missing.push(f); continue; }
+          const data = new Uint8Array(await res.arrayBuffer());
+          let path = `${root}/dokumenty/${safe(sections[f.section] ?? f.section)}/${safe(f.heading)}/${safe(f.title)}/v${safe(f.version)}/${safe(f.name)}`;
+          let i = 2; const base = path;
+          while (used.has(path.toLowerCase())) { path = base.replace(/(\.[^./]+)?$/, ` (${i++})$1`); }
+          used.add(path.toLowerCase());
+          entries.push({ path, data });
+          manifest.push({ ...f, path: path.slice(root.length + 1) });
+        }
+      }
+      await Promise.all([worker(), worker(), worker()]);
+      s.state = 'ok'; s.note = missing.length ? `${missing.length} se nepodařilo stáhnout` : ''; draw();
+
+      s = step('Skládám ZIP');
+      entries.push({ path: `${root}/soubory.json`, data: enc.encode(JSON.stringify(manifest, null, 2)) });
+      const readme = [
+        `ZaZa BaseCamp – záloha z ${date} (${info.site})`, '',
+        'Obsah:',
+        '  data/        všechna data systému ve formátu JSON (účty, dokumenty, odkazy, evidence čtení, Směny) – slouží k obnově',
+        '  dokumenty/   nahrané soubory roztříděné podle sekce / nadpisu / názvu / verze – dají se normálně otevřít',
+        '  soubory.json seznam souborů s jejich původními identifikátory (pro obnovu)', '',
+        `Účtů: ${(info.data.users ?? []).length}, dokumentů: ${(info.data.documents ?? []).length}, souborů: ${manifest.length}${missing.length ? `, nestažených souborů: ${missing.length} (viz níže)` : ''}`, '',
+        'Soubor obsahuje osobní údaje zaměstnanců a otisky hesel (ne hesla samotná). Nikomu ho neposílej a neukládej ho na sdílené místo.',
+        ...(missing.length ? ['', 'Nestažené soubory:', ...missing.map((f) => `  ${f.title} v${f.version} – ${f.name} (${f.id})`)] : []),
+      ].join('\n');
+      entries.unshift({ path: `${root}/PRECTI-ME.txt`, data: enc.encode(readme) });
+      const blob = zipBuild(entries, info.exportedAt);
+      s.state = 'ok'; s.note = fmtMB(blob.size); draw();
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `${root}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      const done = document.getElementById('done');
+      done.textContent = `Hotovo za ${Math.max(1, Math.round((Date.now() - t0) / 1000))} s. Záloha ${root}.zip (${fmtMB(blob.size)}) se stahuje – ulož ji na bezpečné místo.${missing.length ? ` Pozor: ${missing.length} souborů se nepodařilo stáhnout, seznam je v PRECTI-ME.txt.` : ''}`;
+      done.hidden = false;
+    } catch (ex) {
+      const last = steps.at(-1); if (last && last.state === 'run') { last.state = ''; draw(); }
+      const err = document.getElementById('err'); err.textContent = `Záloha se nepovedla: ${ex.message}`; err.hidden = false;
+    } finally { btn.disabled = false; }
+  });
+})().catch(BC.fail);
+</script>
+</body>
+</html>

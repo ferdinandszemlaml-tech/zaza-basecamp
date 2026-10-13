@@ -182,6 +182,10 @@ fieldset { margin: 0; border: 0; padding: 0; display: flex; flex-direction: colu
 .segmented { display: flex; gap: 4px; padding: 4px; background: var(--cream-2); border-radius: 14px; }
 .segmented a, .segmented button { flex-grow: 1; text-align: center; text-decoration: none; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; }
 .segmented .active { background: #fff; color: var(--green); font-weight: 700; }
+/* Admin má čtyři záložky – na telefonu se zalomí do dvou řádků. */
+.admin-tabs { flex-wrap: wrap; }
+.admin-tabs a { white-space: nowrap; flex: 1 1 auto; }
+@media (max-width: 599px) { .admin-tabs a { flex-basis: calc(50% - 2px); padding: 9px 8px; font-size: 13.5px; } }
 
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .stat { border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 600; }
@@ -221,3 +225,4 @@ fieldset { margin: 0; border: 0; padding: 0; display: flex; flex-direction: colu
   .auth-hero::before { height: 210px; }
   .auth-logo { font-size: 110px; }
 }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; background: var(--cream-2); padding: 1px 5px; border-radius: 5px; }

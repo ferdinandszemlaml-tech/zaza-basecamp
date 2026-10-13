@@ -17,6 +17,7 @@ const BC = (() => {
     trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     upload: '<path d="M12 20V9"/><path d="m7 14 5-5 5 5"/><path d="M5 4h14"/>',
+    download: '<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     up: '<path d="m6 15 6-6 6 6"/>',
     note: '<path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/>',
@@ -209,8 +210,8 @@ const BC = (() => {
   }
 
   function adminTabs(active) {
-    const tabs = [['dokumenty', '/admin-dokumenty.html', 'Dokumenty'], ['zamestnanci', '/admin-zamestnanci.html', 'Zaměstnanci'], ['prehled', '/admin-prehled.html', 'Přehled']];
-    return `<nav class="segmented" aria-label="Admin">${tabs.map(([id, href, label]) => `<a href="${href}" class="${id === active ? 'active' : ''}"${id === active ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
+    const tabs = [['dokumenty', '/admin-dokumenty.html', 'Dokumenty'], ['zamestnanci', '/admin-zamestnanci.html', 'Zaměstnanci'], ['prehled', '/admin-prehled.html', 'Přehled'], ['zaloha', '/admin-zaloha.html', 'Záloha']];
+    return `<nav class="segmented admin-tabs" aria-label="Admin">${tabs.map(([id, href, label]) => `<a href="${href}" class="${id === active ? 'active' : ''}"${id === active ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav>`;
   }
 
   return {
