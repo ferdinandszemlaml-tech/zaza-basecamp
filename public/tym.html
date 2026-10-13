@@ -15,7 +15,6 @@
 .search { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid var(--field); border-radius: 999px; padding: 0 18px; max-width: 420px; width: 100%; margin: 0 auto; }
 .search input { flex: 1; border: 0; outline: none; background: transparent; font-size: 16px; color: var(--ink); padding: 12px 0; min-width: 0; }
 .search svg { color: var(--muted-2); flex-shrink: 0; }
-#posFilter { justify-content: center; }
 .addr { font-size: 13px; color: var(--muted); line-height: 1.4; }
 </style>
 </head>
@@ -27,24 +26,18 @@
   await BC.init({ active: 'tym' });
   const { team } = await BC.api('team');
   const { esc } = BC;
-  const positions = BC.meta.positions;
-  let pos = '';
 
   document.getElementById('main').innerHTML = `
     <div class="page-head"><h1>Tým</h1>
     <p class="lead">Kontakty na kolegy. Klepnutím na číslo rovnou voláš.</p></div>
     <label class="search">${BC.icon('search', 20)}<span class="sr-only">Hledat kolegu</span>
       <input id="q" type="search" placeholder="Hledat jméno"></label>
-    <nav class="filter" aria-label="Pozice" id="posFilter">
-      <a href="#" data-pos="" class="active" aria-current="true">Všichni</a>
-      ${positions.map((p) => `<a href="#" data-pos="${p.id}">${esc(p.name)}</a>`).join('')}
-    </nav>
     <div class="card" id="list"></div>
   `;
 
   function render() {
     const q = document.getElementById('q').value.trim().toLowerCase();
-    const shown = team.filter((m) => (!pos || m.positions.includes(pos)) && BC.whoMatch(m, q));
+    const shown = team.filter((m) => BC.whoMatch(m, q));
     document.getElementById('list').innerHTML = shown.length ? shown.map((m) => `
       <div class="item">
         <span class="avatar soft" style="width:44px;height:44px;font-size:15px">${esc(BC.initials(m.name))}</span>
@@ -56,14 +49,6 @@
       </div>`).join('') : '<div class="empty">Nikoho takového nenacházím.</div>';
   }
   document.getElementById('q').addEventListener('input', render);
-  document.getElementById('posFilter').addEventListener('click', (e) => {
-    const a = e.target.closest('[data-pos]');
-    if (!a) return;
-    e.preventDefault();
-    pos = a.dataset.pos;
-    document.querySelectorAll('#posFilter a').forEach((x) => { x.classList.toggle('active', x === a); x.toggleAttribute('aria-current', x === a); });
-    render();
-  });
   render();
 })().catch(BC.fail);
 </script>
