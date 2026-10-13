@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Úvod · ZaZa BaseCamp</title>
+<meta name="theme-color" content="#0B4A44">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<style>
+.summary { display: flex; flex-direction: column; gap: 10px; }
+.summary .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.summary .label { margin: 0; color: var(--muted); }
+.summary .count { font-weight: 700; color: var(--green); white-space: nowrap; }
+.sec-head { text-align: center; margin-top: 10px; }
+.rule { border-top: 1px solid var(--line); margin: 6px 0 2px; }
+@media (min-width: 900px) { .rule { margin: 18px 0 8px; } .sec-head { margin-top: 18px; } #secFilter { margin-bottom: 8px; } }
+.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--coral); } 100% { box-shadow: var(--shadow); } }
+</style>
+</head>
+<body>
+<main class="bc-main" id="main"><p class="muted">Načítám…</p></main>
+<script src="/app.js"></script>
+<script>
+(async () => {
+  const me = await BC.init({ active: 'uvod' });
+  const [{ documents, headingOrder }, { links: allLinks }] = await Promise.all([BC.api('documents'), BC.api('links')]);
+  const { esc } = BC;
+  const sections = BC.meta.sections.filter((s) => !s.public);
+  const params = new URLSearchParams(location.search);
+  // Výchozí sekce: z adresy, jinak první sekce, kde má zaměstnanec něco povinného.
+  const mandatory = documents.filter((d) => d.mandatory);
+  const mandLinks = allLinks.filter((l) => l.mandatory);
+  const firstOwn = sections.find((s) => [...mandatory, ...mandLinks].some((d) => d.section === s.id && d.section !== 'spolecne'));
+  let current = sections.some((s) => s.id === params.get('s')) ? params.get('s') : (firstOwn ?? sections[0]).id;
+
+  const unread = mandatory.filter((d) => !d.versions[0].readAt);
+  const unreadLinks = mandLinks.filter((l) => !l.readAt);
+  const total = mandatory.length + mandLinks.length;
+  const n = unread.length + unreadLinks.length;
+  const done = total - n;
+  const pct = total ? Math.round((done / total) * 100) : 100;
+  const countText = n === 0 ? 'Všechno povinné máš přečtené.' : `Máš <strong>${n} ${n === 1 ? 'dokument' : n < 5 ? 'dokumenty' : 'dokumentů'}</strong> k přečtení.`;
+
+  function versionRow(d, v, i) {
+    let status, text;
+    if (v.readAt) { status = 'ok'; text = `Přečteno ${BC.fmtDate(v.readAt)}`; }
+    else if (i === 0 && d.mandatory) { status = 'no'; text = 'Nové'; }
+    else { status = 'na'; text = i === 0 ? 'Nepovinné' : 'Starší verze'; }
+    return `<div class="item${status === 'no' ? ' new' : ''}" data-row>
+      ${BC.mark(status)}
+      <span class="item-main"><span class="item-title" style="${i ? 'font-weight:600;color:var(--ink-2)' : ''}">Verze ${esc(v.version)}</span>
+      <span class="item-sub">${BC.fmtDate(v.uploadedAt)} · ${BC.filesLabel(v)} · ${text}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}${BC.filesList(v, (f) => BC.fileLink(f, 'btn small outline'))}</span>
+      ${v.files.length > 1 ? '' : BC.fileLink(v.files[0], i === 0 ? 'btn small outline' : 'btn small soft')}
+    </div>`;
+  }
+
+  function renderSection() {
+    const docs = documents.filter((d) => d.section === current);
+    const links = allLinks.filter((l) => l.section === current);
+    const headings = BC.headingsOf([...docs, ...links], current, headingOrder);
+    document.querySelectorAll('#secFilter a').forEach((a) => { a.classList.toggle('active', a.dataset.s === current); a.toggleAttribute('aria-current', a.dataset.s === current); });
+    document.getElementById('secBody').innerHTML = docs.length || links.length ? headings.map((h) => `
+      <div class="label">${esc(h)}</div>
+      ${BC.mergeItems(docs, links, h).map((d) => d.kind === 'link' ? BC.linkCard(d) : `
+        <div class="card" id="doc-${esc(d.id)}" data-sec="${esc(d.section)}">
+          <div class="doc-head">${BC.icon('file', 22, 'var(--sec)')}<span>${esc(d.title)}</span></div>
+          ${d.description ? `<div class="desc">${esc(d.description)}</div>` : ''}
+          ${d.versions.map((v, i) => versionRow(d, v, i)).join('')}
+        </div>`).join('')}`).join('')
+      : '<div class="card empty">V této sekci zatím nic není.</div>';
+    const u = new URL(location.href);
+    u.searchParams.set('s', current);
+    history.replaceState(null, '', u.pathname + u.search);
+  }
+
+  document.getElementById('main').innerHTML = `
+    <div class="page-head"><h1>Ahoj, ${esc(me.user.nick || BC.firstName(me.user.name))}</h1><p class="lead">${countText}</p>
+      ${n ? '<a class="cta" href="#k-precteni" style="margin-top:10px">Pokračovat ve čtení</a>' : ''}</div>
+    ${total ? `<div class="card card-pad summary">
+      <div class="top"><span class="label">Povinné dokumenty</span><span class="count">${done} z ${total} povinných</span></div>
+      <div class="progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Přečteno povinných dokumentů"><div style="width:${pct}%"></div></div>
+    </div>` : ''}
+    ${n ? `<div class="rule"></div><h2 class="sec-head" id="k-precteni">K přečtení</h2>
+    <div class="stack">${unread.map((d) => { const v = d.versions[0]; const multi = v.files.length > 1; return `
+      <a class="card item new" data-row ${multi ? `href="#doc-${esc(d.id)}" data-goto="${esc(d.id)}" data-sec-id="${esc(d.section)}"` : `href="/api/files/${esc(v.files[0].id)}" target="_blank" rel="noopener" data-open="${esc(v.files[0].id)}"`} style="border-top:0">
+        ${BC.mark('no')}
+        <span class="item-main">
+          <span class="sec" data-sec="${esc(d.section)}">${esc(BC.sectionName(d.section))}</span>
+          <span class="item-title" style="font-size:16px">${esc(d.title)}</span>
+          <span class="item-sub">${d.versions.length > 1 ? 'Nová verze' : 'Nový dokument'} ${esc(v.version)} · ${BC.filesLabel(v)}</span>${v.note ? `<span class="vnote">${esc(v.note)}</span>` : ''}
+        </span>
+        ${BC.icon('chevron', 20, 'var(--green)')}
+      </a>`; }).join('')}${unreadLinks.map((l) => `
+      <a class="card item new" data-row href="/api/links/${esc(l.id)}/open" target="_blank" rel="noopener" data-open="${esc(l.id)}" style="border-top:0">
+        ${BC.mark('no')}
+        <span class="item-main">
+          <span class="sec" data-sec="${esc(l.section)}">${esc(BC.sectionName(l.section))}</span>
+          <span class="item-title" style="font-size:16px">${esc(l.title)}</span>
+          <span class="item-sub">Odkaz · ${esc(BC.linkKind(l.url))}</span>
+        </span>
+        ${BC.icon('external', 20, 'var(--green)')}
+      </a>`).join('')}</div>` : ''}
+    <div class="rule"></div><h2 class="sec-head" id="secTitle">Dokumenty</h2>
+    <nav class="sec-tiles" aria-label="Sekce" id="secFilter">${sections.map((s) => {
+      const docsIn = documents.filter((d) => d.section === s.id).length + allLinks.filter((l) => l.section === s.id && l.type === 'link').length;
+      const unreadIn = unread.filter((d) => d.section === s.id).length + unreadLinks.filter((l) => l.section === s.id).length;
+      const [brand, name] = /^ZaZa /.test(s.name) ? ['ZaZa', s.name.slice(5)] : /^Little /.test(s.name) ? ['Little ZaZa', s.name.slice(7)] : ['ZaZa', s.name];
+      return `<a href="?s=${s.id}" data-s="${s.id}" data-sec="${s.id}" aria-label="${esc(s.name)}">
+        <span class="tile-brand">${esc(brand)}</span><span class="tile-name">${esc(name)}</span>
+        <span class="tile-count">${docsIn} ${docsIn === 1 ? 'dokument' : docsIn < 5 && docsIn > 0 ? 'dokumenty' : 'dokumentů'}</span>
+        ${unreadIn ? `<span class="tile-badge">${unreadIn} ${unreadIn === 1 ? 'nepřečtený' : unreadIn < 5 ? 'nepřečtené' : 'nepřečtených'}</span>` : ''}
+      </a>`; }).join('')}</nav>
+    <div id="secBody" class="stack" style="gap:12px"></div>
+  `;
+
+  renderSection();
+  document.getElementById('secFilter').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-s]');
+    if (!a) return;
+    e.preventDefault();
+    current = a.dataset.s;
+    renderSection();
+  });
+  // Dokument s více soubory z „K přečtení“: přepne sekci a sjede na něj.
+  document.getElementById('main').addEventListener('click', (e) => {
+    const g = e.target.closest('[data-goto]');
+    if (!g) return;
+    e.preventDefault();
+    current = g.dataset.secId;
+    renderSection();
+    const card = document.getElementById(`doc-${g.dataset.goto}`);
+    card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card?.classList.add('flash');
+  });
+  if (location.hash.startsWith('#doc-')) document.querySelector(location.hash)?.scrollIntoView({ block: 'center' });
+  BC.trackOpens();
+})().catch(BC.fail);
+</script>
+</body>
+</html>
