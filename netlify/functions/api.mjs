@@ -134,10 +134,22 @@ async function loadUsers() {
   return users;
 }
 const saveUsers = (v) => setJSON('users', v);
-const loadDocs = () => getJSON('documents', []);
 const saveDocs = (v) => setJSON('documents', v);
-const loadLinks = () => getJSON('links', []);
 const saveLinks = (v) => setJSON('links', v);
+// Jednorázově po zavedení pozice Vedení: co bylo povinné pro kohokoli, je povinné i pro vedení
+// (dřív měli lidé z vedení zaškrtnuté všechny pozice). Admin to může u dokumentu odškrtnout.
+let vedeniMigration = null;
+async function migrateVedeni() {
+  if (await getJSON('migrations/vedeni', null)) return;
+  const [docs, links] = await Promise.all([getJSON('documents', []), getJSON('links', [])]);
+  const fix = (list) => list.filter((x) => !isPublicDoc(x) && (x.mandatoryFor ?? []).length && !x.mandatoryFor.includes('vedeni')).map((x) => { x.mandatoryFor.push('vedeni'); return x; }).length;
+  const n = fix(docs) + fix(links);
+  if (n) await Promise.all([saveDocs(docs), saveLinks(links)]);
+  await setJSON('migrations/vedeni', { at: new Date().toISOString(), changed: n });
+}
+const migrated = () => (vedeniMigration ??= migrateVedeni().catch((e) => { vedeniMigration = null; throw e; }));
+const loadDocs = async () => { await migrated(); return getJSON('documents', []); };
+const loadLinks = async () => { await migrated(); return getJSON('links', []); };
 const loadReads = (uid) => getJSON(`reads/${uid}`, []);
 const saveReads = (uid, v) => setJSON(`reads/${uid}`, v);
 

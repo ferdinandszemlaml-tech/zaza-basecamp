@@ -145,6 +145,7 @@ h1 .who-name { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-siz
 .chip[data-pos^="zaza"] { background: #FDE6E0; color: #9E2F16; }
 .chip[data-pos="zaza-barman"], .chip[data-pos="zaza-plac"] { background: var(--green-soft); color: var(--green); }
 .chip[data-pos^="little"] { background: #E6E9FB; color: #1A33CC; }
+.chip[data-pos="vedeni"] { background: var(--green); color: #fff; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter a { flex-shrink: 0; text-decoration: none; padding: 9px 14px; border-radius: 22px; background: #fff; border: 1px solid #E0D9CD; color: var(--ink-2); font-size: 14px; font-weight: 600; }

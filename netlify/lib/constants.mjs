@@ -16,15 +16,17 @@ export const POSITIONS = [
   { id: 'zaza-kuchyn', name: 'ZaZa Kuchyň' },
   { id: 'little-bar', name: 'Little Bar' },
   { id: 'little-kuchyn', name: 'Little Kuchyň' },
+  // Vedení: majitelé a provozní – mají znát všechno, co je povinné pro kohokoli.
+  { id: 'vedeni', name: 'Vedení' },
 ];
 
 // Předvyplnění „Povinné pro pozice“ podle sekce při nahrávání dokumentu.
 export const DEFAULT_MANDATORY = {
   'spolecne': POSITIONS.map((p) => p.id),
-  'zaza-bar': ['zaza-barman', 'zaza-plac'],
-  'zaza-kuchyne': ['zaza-kuchyn'],
-  'little-bar': ['little-bar'],
-  'little-kuchyne': ['little-kuchyn'],
+  'zaza-bar': ['zaza-barman', 'zaza-plac', 'vedeni'],
+  'zaza-kuchyne': ['zaza-kuchyn', 'vedeni'],
+  'little-bar': ['little-bar', 'vedeni'],
+  'little-kuchyne': ['little-kuchyn', 'vedeni'],
   'novy-zamestnanec': [],
 };
 
