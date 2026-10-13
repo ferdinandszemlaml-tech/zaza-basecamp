@@ -14,7 +14,7 @@
 .summary .count { font-weight: 700; color: var(--green); white-space: nowrap; }
 .sec-head { text-align: center; margin-top: 10px; }
 .rule { border-top: 1px solid var(--line); margin: 6px 0 2px; }
-@media (min-width: 900px) { .rule { margin: 18px 0 8px; } .sec-head { margin-top: 18px; } #secFilter { justify-content: center; margin-bottom: 8px; } }
+@media (min-width: 900px) { .rule { margin: 18px 0 8px; } .sec-head { margin-top: 18px; } #secFilter { margin-bottom: 8px; } }
 .flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--coral); } 100% { box-shadow: var(--shadow); } }
 </style>
@@ -103,12 +103,19 @@
         ${BC.icon('external', 20, 'var(--green)')}
       </a>`).join('')}</div>` : ''}
     <div class="rule"></div><h2 class="sec-head" id="secTitle">Dokumenty</h2>
-    <nav class="filter scroll" aria-label="Sekce" id="secFilter">${sections.map((s) => `<a href="?s=${s.id}" data-s="${s.id}" data-sec="${s.id}">${esc(s.name)}</a>`).join('')}</nav>
+    <nav class="sec-tiles" aria-label="Sekce" id="secFilter">${sections.map((s) => {
+      const docsIn = documents.filter((d) => d.section === s.id).length + allLinks.filter((l) => l.section === s.id && l.type === 'link').length;
+      const unreadIn = unread.filter((d) => d.section === s.id).length + unreadLinks.filter((l) => l.section === s.id).length;
+      const [brand, name] = /^ZaZa /.test(s.name) ? ['ZaZa', s.name.slice(5)] : /^Little /.test(s.name) ? ['Little ZaZa', s.name.slice(7)] : ['ZaZa', s.name];
+      return `<a href="?s=${s.id}" data-s="${s.id}" data-sec="${s.id}" aria-label="${esc(s.name)}">
+        <span class="tile-brand">${esc(brand)}</span><span class="tile-name">${esc(name)}</span>
+        <span class="tile-count">${docsIn} ${docsIn === 1 ? 'dokument' : docsIn < 5 && docsIn > 0 ? 'dokumenty' : 'dokumentů'}</span>
+        ${unreadIn ? `<span class="tile-badge">${unreadIn} ${unreadIn === 1 ? 'nepřečtený' : unreadIn < 5 ? 'nepřečtené' : 'nepřečtených'}</span>` : ''}
+      </a>`; }).join('')}</nav>
     <div id="secBody" class="stack" style="gap:12px"></div>
   `;
 
   renderSection();
-  document.querySelector('#secFilter .active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   document.getElementById('secFilter').addEventListener('click', (e) => {
     const a = e.target.closest('[data-s]');
     if (!a) return;

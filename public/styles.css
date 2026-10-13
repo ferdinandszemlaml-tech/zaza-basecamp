@@ -218,6 +218,23 @@ h1 .who-name { font-size: 18px; display: block; margin: 2px 0 0; font-weight: 50
 .filter a:hover { border-color: var(--field); color: var(--ink); }
 .filter a.active { background: var(--sec, var(--green)); border-color: var(--sec, var(--green)); color: #fff; font-weight: 700; }
 .filter.center { justify-content: center; }
+/* Dlaždice sekcí na Úvodu: název, počet dokumentů a štítek s nepřečtenými. */
+.sec-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.sec-tiles a { position: relative; display: flex; flex-direction: column; gap: 2px; min-height: 118px; padding: 14px 14px 12px; border-radius: var(--radius); background: #fff; border: 1.5px solid var(--line); box-shadow: var(--shadow); text-decoration: none; color: var(--ink); }
+.sec-tiles a::before { content: ''; position: absolute; left: 14px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--sec, var(--green)); }
+.sec-tiles .tile-brand { font-family: var(--condensed); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); padding-left: 16px; }
+.sec-tiles .tile-name { font-size: 19px; font-weight: 800; line-height: 1.2; color: var(--ink); }
+.sec-tiles .tile-count { font-size: 14px; color: var(--muted); }
+.sec-tiles .tile-badge { align-self: flex-start; margin-top: auto; padding: 3px 10px; border-radius: 999px; background: var(--no-bg); color: var(--no-text); font-size: 13px; font-weight: 700; }
+.sec-tiles .tile-count + .tile-badge { margin-top: 8px; }
+.sec-tiles a:hover { border-color: var(--sec, var(--green)); color: var(--ink); }
+.sec-tiles a.active { background: var(--sec, var(--green)); border-color: var(--sec, var(--green)); color: #fff; }
+.sec-tiles a.active::before { background: #fff; }
+.sec-tiles a.active .tile-brand, .sec-tiles a.active .tile-count { color: rgba(255,255,255,0.8); }
+.sec-tiles a.active .tile-name { color: #fff; }
+.sec-tiles a.active .tile-badge { background: #fff; color: var(--sec-text, var(--green)); }
+@media (min-width: 600px) { .sec-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .sec-tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; } .sec-tiles a { min-height: 136px; padding: 18px 16px 14px; } .sec-tiles .tile-name { font-size: 20px; } }
 /* Výběr sekce na telefonu: jeden řádek, posouvá se do strany. */
 @media (max-width: 899px) { .filter.scroll { flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 2px 16px 6px; scrollbar-width: none; } .filter.scroll::-webkit-scrollbar { display: none; } }
 
